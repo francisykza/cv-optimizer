@@ -62,6 +62,8 @@ def test_detects_invented_year():
         ("en un 30%", "en un 45%", "45"),
         ("Mantenimiento de aplicaciones Django.", "Mantenimiento de 12 aplicaciones Django.", "12"),
         ("## Resumen profesional\n", "## Resumen profesional\nMás de 5 años de experiencia. ", "5"),
+        # Regresión (visto en producción): el "2" de "inglés B2" no respalda "2 años".
+        ("## Resumen profesional\n", "## Resumen profesional\nMás de 2 años de experiencia. ", "2"),
         ("Despliegue de servicios con Docker", "Despliegue de servicios 3x más rápido con Docker", "3"),
     ],
 )

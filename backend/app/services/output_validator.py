@@ -59,7 +59,6 @@ _YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 # Cifras sueltas: "30%", "3x", "10k", "+4 años". No captura las que van pegadas a letras
 # por delante (B2, ES6, S3, Python3), que son versiones o niveles y no métricas.
 _NUMBER = re.compile(r"(?<![\w.,])(\d+(?:[.,]\d+)*)(?!\d)")
-_ANY_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 _LIST_MARKER = re.compile(r"^\s*(?:\d+[.)]|[-*+])\s+", re.MULTILINE)
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _URL = re.compile(r"(?:https?://|www\.)[^\s)>\]]+|\b(?:linkedin\.com|github\.com)/[^\s)>\]]+", re.I)
@@ -136,7 +135,9 @@ class SourceIndex:
         self.tokens = set(_tokens(text))
         self.stems = {_stem(t) for t in self.tokens}
         self.years = set(_YEAR.findall(text))
-        self.numbers = {_canonical_number(n) for n in _ANY_NUMBER.findall(text)}
+        # Solo cifras sueltas, igual que en el CV generado. Si se aceptaran también los dígitos
+        # pegados a letras, el "2" de "B2" respaldaría un "2 años de experiencia" inventado.
+        self.numbers = {_canonical_number(n) for n in _NUMBER.findall(text)}
 
     def contains_phrase(self, phrase: str) -> bool:
         phrase = fold(phrase)
