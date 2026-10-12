@@ -1,0 +1,39 @@
+# Blueprint de Render (Infrastructure as Code) para el backend FastAPI.
+# Render -> New -> Blueprint -> selecciona este repositorio.
+services:
+  - type: web
+    name: cv-optimizer-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    # --proxy-headers: Render está detrás de un proxy; así la IP real llega al rate limiter.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Versión completa (major.minor.patch) para builds reproducibles en Render.
+      - key: PYTHON_VERSION
+        value: "3.12.10"
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      # Secretos y URLs: se piden en el dashboard al crear el Blueprint (nunca en el repo).
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false # p. ej. https://cv-optimizer.vercel.app
+      - key: ALLOWED_ORIGIN_REGEX
+        sync: false # opcional, previews de Vercel: https://cv-optimizer-.*\.vercel\.app
+      - key: GROQ_MODEL_PRIMARY
+        value: llama-3.3-70b-versatile
+      - key: GROQ_MODEL_FALLBACK
+        value: llama-3.1-8b-instant
+      - key: MAX_UPLOAD_MB
+        value: "5"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "5"
+      - key: RATE_LIMIT_PER_DAY
+        value: "30"

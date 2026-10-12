@@ -1,0 +1,20 @@
+[project]
+name = "cv-optimizer-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC"]
+ignore = ["B008"]  # Depends()/File() en firmas: patrón estándar de FastAPI
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S106"]

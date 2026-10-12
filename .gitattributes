@@ -1,0 +1,6 @@
+# Saltos de línea LF en el repositorio (el desarrollo es en Windows; CI y Render corren en Linux).
+* text=auto eol=lf
+
+*.jpg binary
+*.png binary
+*.woff2 binary
