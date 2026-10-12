@@ -87,7 +87,14 @@ class GroqProvider(LLMProvider):
             except httpx.TimeoutException as exc:
                 # No se reintenta: con 45 s por intento la espera total sería inaceptable.
                 raise LLMTimeoutError() from exc
-            except httpx.TransportError:
+            except httpx.LocalProtocolError as exc:
+                # La petición ni siquiera se envía (p. ej. cabecera inválida): reintentar no ayuda.
+                logger.error("llm_invalid_request provider=groq error=%s", type(exc).__name__)
+                raise LLMUpstreamError("La petición al proveedor de IA no es válida.") from exc
+            except httpx.TransportError as exc:
+                logger.warning(
+                    "llm_transport_error provider=groq model=%s error=%s", model, type(exc).__name__
+                )
                 error = LLMUpstreamError("No se pudo conectar con el proveedor de IA.")
             else:
                 if response.status_code == 200:

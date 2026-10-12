@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 5
     rate_limit_per_day: int = 30
     key_validation_per_minute: int = 10
+
+    @field_validator("groq_api_key", mode="before")
+    @classmethod
+    def _strip_api_key(cls, value: object) -> object:
+        # Los paneles de los proveedores cloud (p. ej. el textarea de Render) cuelan a menudo
+        # un salto de línea o un espacio al pegar la clave, y eso invalida la cabecera HTTP.
+        return value.strip() if isinstance(value, str) else value
 
     @property
     def max_upload_bytes(self) -> int:

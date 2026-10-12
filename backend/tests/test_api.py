@@ -74,6 +74,17 @@ def test_optimize_byok_uses_user_key(client, groq_mock):
     assert route.calls.last.request.headers["authorization"] == f"Bearer {USER_KEY}"
 
 
+def test_server_key_pasted_with_whitespace_is_cleaned(groq_mock):
+    """Regresión: el textarea de Render añadió un salto de línea a la clave y httpx rechazaba la
+    cabecera Authorization sin llegar a contactar con Groq."""
+    route = groq_mock.post("/chat/completions").mock(return_value=groq_completion(llm_payload()))
+    with TestClient(create_app(make_settings(groq_api_key=f"  {SERVER_KEY}\n"))) as client:
+        response = post_optimize(client)
+
+    assert response.status_code == 200, response.text
+    assert route.calls.last.request.headers["authorization"] == f"Bearer {SERVER_KEY}"
+
+
 def test_byok_works_without_server_key(groq_mock):
     groq_mock.post("/chat/completions").mock(return_value=groq_completion(llm_payload()))
     with TestClient(create_app(make_settings(groq_api_key=""))) as client:
