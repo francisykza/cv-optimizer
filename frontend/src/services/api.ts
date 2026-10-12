@@ -61,8 +61,8 @@ function byokHeaders(apiKey?: string): HeadersInit {
   return apiKey ? { 'X-User-API-Key': apiKey, 'X-LLM-Provider': 'groq' } : {}
 }
 
-export function checkHealth(signal?: AbortSignal): Promise<HealthResponse> {
-  return request<HealthResponse>('/health', { signal, timeoutMs: 90_000 })
+export function checkHealth(signal?: AbortSignal, timeoutMs = 15_000): Promise<HealthResponse> {
+  return request<HealthResponse>('/health', { signal, timeoutMs })
 }
 
 export function validateApiKey(apiKey: string): Promise<KeyValidationResponse> {

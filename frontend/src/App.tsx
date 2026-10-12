@@ -47,7 +47,9 @@ export default function App() {
         ? 'La oferta es demasiado larga.'
         : server.serverKeyAvailable === false && !hasKey
           ? 'Introduce tu API key de Groq para continuar.'
-          : undefined
+          : server.state === 'waking'
+            ? 'Esperando a que el servidor despierte…'
+            : undefined
 
   const handleSubmit = () => {
     if (!file || disabledReason) return
