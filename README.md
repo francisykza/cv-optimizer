@@ -10,7 +10,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Python](https://img.shields.io/badge/Python_3.12-3776AB?logo=python&logoColor=white)
 ![Groq](https://img.shields.io/badge/LLM-Groq-F55036)
-![Tests](https://img.shields.io/badge/tests-88_passing-22C55E)
+![Tests](https://img.shields.io/badge/tests-89_passing-22C55E)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/hero-dark.jpg" alt="Página de inicio de CV-Optimizer" width="800" />
@@ -125,7 +125,7 @@ Decisiones destacadas (todas justificadas en el [SDD](SDD.md)):
 |---|---|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, react-markdown (+ sanitizado), lucide-react |
 | Backend | Python 3.12, FastAPI, Pydantic v2, httpx, pypdf |
-| LLM | Groq (Llama 3.3 70B principal, Llama 3.1 8B de reserva; configurables) |
+| LLM | Groq (GPT-OSS 120B principal, GPT-OSS 20B de reserva; configurables) |
 | Calidad | pytest + respx, Vitest + Testing Library, ruff, GitHub Actions |
 | Infraestructura | Vercel (frontend), Render (backend) con un Blueprint `render.yaml` |
 
@@ -197,7 +197,7 @@ La lista completa está en [`backend/.env.example`](backend/.env.example) y [`co
 ## Tests y calidad
 
 ```bash
-cd backend && pytest -q && ruff check app tests     # 71 tests
+cd backend && pytest -q && ruff check app tests     # 72 tests
 cd frontend && npm test && npm run build             # 17 tests + typecheck + build
 ```
 
@@ -235,7 +235,7 @@ La CI ([`ci.yml`](.github/workflows/ci.yml)) ejecuta lint, tests y build en cada
   "changes_summary": ["Resumen orientado a backend con Python."],
   "warnings": [],
   "quality": "ok",
-  "meta": { "mode": "server", "model": "llama-3.3-70b-versatile", "latency_ms": 4870, "...": "..." }
+  "meta": { "mode": "server", "model": "openai/gpt-oss-120b", "latency_ms": 4870, "...": "..." }
 }
 ```
 

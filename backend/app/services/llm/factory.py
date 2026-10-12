@@ -48,6 +48,7 @@ def create_provider(
         timeout_s=settings.llm_timeout_s,
         max_retries=settings.llm_max_retries,
         backoff_base_s=settings.llm_backoff_base_s,
+        reasoning_effort=settings.llm_reasoning_effort,
     )
     if user_key is not None:
         # BYOK: la clave del usuario solo vive en este objeto, durante esta petición.

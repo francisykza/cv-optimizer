@@ -20,6 +20,11 @@ from app.services.llm.base import LLMProvider, LLMRequest, LLMResponse, Mode, To
 logger = logging.getLogger(__name__)
 
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+_REASONING_MODEL_PREFIXES = ("openai/gpt-oss",)
+
+
+def is_reasoning_model(model: str) -> bool:
+    return model.startswith(_REASONING_MODEL_PREFIXES)
 _MAX_RETRY_AFTER_S = 10.0
 _CONNECT_TIMEOUT_S = 5.0
 
@@ -37,9 +42,11 @@ class GroqProvider(LLMProvider):
         timeout_s: float = 45.0,
         max_retries: int = 2,
         backoff_base_s: float = 1.0,
+        reasoning_effort: str | None = None,
     ) -> None:
         if not models:
             raise ValueError("Se necesita al menos un modelo.")
+        self._reasoning_effort = reasoning_effort
         self._client = client
         self._api_key = api_key  # SecretStr: su repr es '**********'
         self._models = models
@@ -73,6 +80,9 @@ class GroqProvider(LLMProvider):
         }
         if request.json_mode:
             payload["response_format"] = {"type": "json_object"}
+        if self._reasoning_effort and is_reasoning_model(model):
+            # Solo los modelos de razonamiento aceptan este parámetro; al resto les daría un 400.
+            payload["reasoning_effort"] = self._reasoning_effort
 
         error: AppError = LLMUpstreamError()
         for attempt in range(self._max_retries + 1):

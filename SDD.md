@@ -275,12 +275,12 @@ El blueprint definitivo está en [`render.yaml`](render.yaml). Usa el **runtime 
 | Variable | Ámbito | Obligatoria | Descripción |
 |---|---|---|---|
 | `GROQ_API_KEY` | Backend | Sí (modo servidor) | Clave del servidor para Groq. Es un secreto. |
-| `GROQ_MODEL_PRIMARY` | Backend | Sí | Modelo principal (p. ej. `llama-3.3-70b-versatile`). |
+| `GROQ_MODEL_PRIMARY` | Backend | Sí | Modelo principal (p. ej. `openai/gpt-oss-120b`). |
 | `GROQ_MODEL_FALLBACK` | Backend | No | Modelo de reserva ante 429, 503 o retirada del principal. |
 | `ALLOWED_ORIGINS` | Backend | Sí | Lista de orígenes CORS separados por comas. |
 | `MAX_UPLOAD_MB` | Backend | No (5) | Tamaño máximo del PDF. |
 | `MAX_PDF_PAGES` | Backend | No (5) | Páginas máximas. |
-| `LLM_TIMEOUT_S` | Backend | No (45) | Timeout de la llamada al LLM. |
+| `LLM_TIMEOUT_S` | Backend | No (60) | Timeout de la llamada al LLM. |
 | `RATE_LIMIT_SERVER_KEY` | Backend | No (`5/minute;30/day`) | Límite por IP en el modo servidor. |
 | `LOG_LEVEL` | Backend | No (`INFO`) | Nivel de log. |
 | `VITE_API_BASE_URL` | Frontend | Sí | URL pública del backend. |
@@ -379,8 +379,8 @@ classDiagram
 
 | Uso | Modelo por defecto (configurable) | Motivo |
 |---|---|---|
-| Groq, principal | Modelo grande de propósito general (p. ej. `llama-3.3-70b-versatile`) | Buena calidad de redacción y de seguimiento de instrucciones, con salida JSON. |
-| Groq, fallback | Modelo pequeño y rápido (p. ej. `llama-3.1-8b-instant`) | Más cuota disponible. Se usa ante 429 o 503 del principal. |
+| Groq, principal | Modelo grande de propósito general (p. ej. `openai/gpt-oss-120b`) | Buena calidad de redacción y de seguimiento de instrucciones, con salida JSON. |
+| Groq, fallback | Modelo pequeño y rápido (p. ej. `openai/gpt-oss-20b`) | Más cuota disponible. Se usa ante 429 o 503 del principal. |
 | BYOK OpenAI | Elegido por el usuario de una lista curada | Lista mantenida en `config/providers.yaml`. |
 | BYOK Anthropic | Elegido por el usuario de una lista curada (p. ej. `claude-sonnet-5-5`, `claude-haiku-5-5`) | Lista mantenida en `config/providers.yaml`. |
 
@@ -817,7 +817,7 @@ Comprueba una clave BYOK llamando a `GET /models` del proveedor, que no consume 
 {
   "server_mode": { "enabled": true, "provider": "groq" },
   "byok": [
-    { "id": "groq",      "label": "Groq",      "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"], "key_hint": "gsk_..." },
+    { "id": "groq",      "label": "Groq",      "models": ["openai/gpt-oss-120b", "openai/gpt-oss-20b"], "key_hint": "gsk_..." },
     { "id": "openai",    "label": "OpenAI",    "models": ["<configurable>"], "key_hint": "sk-..." },
     { "id": "anthropic", "label": "Anthropic", "models": ["claude-sonnet-5-5", "claude-haiku-5-5"], "key_hint": "sk-ant-..." }
   ]
@@ -864,7 +864,7 @@ Comprueba una clave BYOK llamando a `GET /models` del proveedor, que no consume 
   "meta": {
     "mode": "server",
     "provider": "groq",
-    "model": "llama-3.3-70b-versatile",
+    "model": "openai/gpt-oss-120b",
     "prompt_version": "v1",
     "latency_ms": 5320,
     "tokens": { "input": 3120, "output": 1450 },

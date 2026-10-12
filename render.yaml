@@ -28,9 +28,9 @@ services:
       - key: ALLOWED_ORIGIN_REGEX
         sync: false # opcional, previews de Vercel: https://cv-optimizer-.*\.vercel\.app
       - key: GROQ_MODEL_PRIMARY
-        value: llama-3.3-70b-versatile
+        value: openai/gpt-oss-120b
       - key: GROQ_MODEL_FALLBACK
-        value: llama-3.1-8b-instant
+        value: openai/gpt-oss-20b
       - key: MAX_UPLOAD_MB
         value: "5"
       - key: RATE_LIMIT_PER_MINUTE

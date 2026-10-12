@@ -85,6 +85,19 @@ def test_server_key_pasted_with_whitespace_is_cleaned(groq_mock):
     assert route.calls.last.request.headers["authorization"] == f"Bearer {SERVER_KEY}"
 
 
+def test_reasoning_effort_only_sent_to_reasoning_models(groq_mock):
+    route = groq_mock.post("/chat/completions").mock(return_value=groq_completion(llm_payload()))
+    settings = make_settings(groq_model_primary="openai/gpt-oss-120b", llm_reasoning_effort="low")
+    with TestClient(create_app(settings)) as client:
+        assert post_optimize(client).status_code == 200
+    assert json.loads(route.calls.last.request.content)["reasoning_effort"] == "low"
+
+    # Con un modelo que no razona no se envía (Groq respondería 400).
+    with TestClient(create_app(make_settings(llm_reasoning_effort="low"))) as client:
+        assert post_optimize(client).status_code == 200
+    assert "reasoning_effort" not in json.loads(route.calls.last.request.content)
+
+
 def test_byok_works_without_server_key(groq_mock):
     groq_mock.post("/chat/completions").mock(return_value=groq_completion(llm_payload()))
     with TestClient(create_app(make_settings(groq_api_key=""))) as client:

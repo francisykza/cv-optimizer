@@ -20,13 +20,19 @@ class Settings(BaseSettings):
     # --- LLM (Groq) ---
     groq_api_key: SecretStr | None = None
     groq_base_url: str = "https://api.groq.com/openai/v1"
-    groq_model_primary: str = "llama-3.3-70b-versatile"
-    groq_model_fallback: str | None = "llama-3.1-8b-instant"
-    llm_timeout_s: float = 45.0
+    # Modelos de producción disponibles en el plan gratuito/developer de Groq (octubre de 2026).
+    # Los Llama 3.x pasaron a ser "Enterprise". Lista actual: https://console.groq.com/docs/models
+    groq_model_primary: str = "openai/gpt-oss-120b"
+    groq_model_fallback: str | None = "openai/gpt-oss-20b"
+    llm_timeout_s: float = 60.0
     llm_max_retries: int = 2
     llm_backoff_base_s: float = 1.0
     llm_temperature: float = 0.2
-    llm_max_output_tokens: int = 4096
+    # En los modelos de razonamiento, el "pensamiento" también consume tokens de salida.
+    llm_max_output_tokens: int = 8192
+    # Solo se envía a modelos de razonamiento (gpt-oss). "low" basta para reescribir un CV y
+    # reduce latencia y coste. Vacío = no enviar el parámetro.
+    llm_reasoning_effort: Literal["low", "medium", "high"] | None = "low"
 
     # --- Validador anti-alucinación ---
     # Si el CV generado tiene al menos N datos no respaldados, se pide al LLM una corrección.
@@ -59,6 +65,11 @@ class Settings(BaseSettings):
         # Los paneles de los proveedores cloud (p. ej. el textarea de Render) cuelan a menudo
         # un salto de línea o un espacio al pegar la clave, y eso invalida la cabecera HTTP.
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("llm_reasoning_effort", mode="before")
+    @classmethod
+    def _empty_reasoning_effort(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
 
     @property
     def max_upload_bytes(self) -> int:
