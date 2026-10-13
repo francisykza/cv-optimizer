@@ -10,7 +10,7 @@ import { ResultViewer } from './result/ResultViewer'
 const RESULT: OptimizeResponse = {
   request_id: 'req-1',
   optimized_markdown: '# Ana García\n\n## Experiencia\n- APIs con **FastAPI**\n\n<script>alert(1)</script>',
-  match: { score_before: 40, score_after: 70, matched_keywords: ['Python', 'FastAPI'], missing_keywords: ['Kubernetes'] },
+  match: { score_before: 40, score_after: 70, matched_keywords: ['Python', 'FastAPI'], missing_keywords: ['Kubernetes'], soft_skills: [] },
   gaps: ['Kubernetes'],
   changes_summary: ['Resumen orientado a backend.'],
   warnings: [],
@@ -138,6 +138,24 @@ ${claim}.`,
 
     expect(screen.getByText('Afirmación')).toBeInTheDocument()
     expect(document.querySelector('mark[data-kind="ungrounded"]')).toHaveTextContent(claim)
+  })
+
+  it('muestra las competencias personales aparte y el aviso de palabra clave perdida', () => {
+    const result: OptimizeResponse = {
+      ...RESULT,
+      match: { ...RESULT.match, soft_skills: ['proactiva', 'dinámica'] },
+      warnings: [{ code: 'KEYWORD_DROPPED', message: "'Contanet' estaba en tu CV original…", term: 'Contanet', snippet: null }],
+    }
+    render(<ResultViewer result={result} onReset={() => {}} />)
+
+    const soft = screen.getByRole('list', { name: 'Competencias personales' })
+    expect(soft).toHaveTextContent('proactiva')
+    expect(screen.getByRole('list', { name: 'Palabras clave' })).not.toHaveTextContent('proactiva')
+    expect(screen.getByText(/no cuentan en la puntuación/)).toBeInTheDocument()
+    // Perder una keyword es informativo: no pide revisar el CV ni se resalta en ámbar.
+    expect(screen.getByText(/'Contanet' estaba en tu CV original/)).toBeInTheDocument()
+    expect(screen.getByText('Verificación anti-invención')).toBeInTheDocument()
+    expect(document.querySelector('mark[data-kind="ungrounded"]')).toBeNull()
   })
 
   it('ofrece la descarga en Word, PDF y Markdown', async () => {

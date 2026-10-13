@@ -10,10 +10,12 @@ class LLMOptimizeOutput(BaseModel):
 
     optimized_markdown: str = Field(min_length=50)
     job_keywords: list[str] = Field(default_factory=list)
+    # Rasgos personales de la oferta ("proactiva"): se muestran aparte y no puntúan.
+    soft_skills: list[str] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
     changes_summary: list[str] = Field(default_factory=list)
 
-    @field_validator("job_keywords", "gaps", "changes_summary", mode="before")
+    @field_validator("job_keywords", "soft_skills", "gaps", "changes_summary", mode="before")
     @classmethod
     def _clean_list(cls, value: object) -> list[str]:
         if not isinstance(value, list):
@@ -26,6 +28,8 @@ class MatchReport(BaseModel):
     score_after: int = Field(ge=0, le=100)
     matched_keywords: list[str]
     missing_keywords: list[str]
+    # Competencias personales que pide la oferta: no se pueden verificar en el CV, no puntúan.
+    soft_skills: list[str] = Field(default_factory=list)
 
 
 class ValidationWarning(BaseModel):
@@ -38,6 +42,7 @@ class ValidationWarning(BaseModel):
         "GAP_LEAKED",
         "FORMAT",
         "LIMITED_CHECK",
+        "KEYWORD_DROPPED",
     ]
     message: str
     term: str | None = None  # fragmento exacto a resaltar en la vista previa

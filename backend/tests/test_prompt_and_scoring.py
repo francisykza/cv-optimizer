@@ -49,3 +49,46 @@ def test_score_is_deterministic():
 def test_score_ignores_partial_words():
     report = score(["Java"], original_cv="JavaScript", optimized_cv="JavaScript")
     assert report.score_after == 0
+
+
+# --- Calidad de las keywords y keywords perdidas (caso real: oferta de administración) -------
+
+ADMIN_OFFER = (
+    "Buscamos auxiliar administrativa con FPI Administración y Finanzas y 2 años de experiencia. "
+    "Funciones: contabilidad, facturación y gestión Laboral. Se valora Contanet y Excel medio. "
+    "Carnet de conducir y vehículo propio. Formación continua. Persona proactiva, dinámica y organizada."
+)
+
+
+def test_generic_keywords_and_bare_numbers_are_discarded():
+    keywords = ["experiencia", "Formación", "2 años", "2"]
+    keywords += ["contabilidad", "Excel medio", "Carnet de conducir"]
+    assert clean_keywords(keywords, ADMIN_OFFER) == ["contabilidad", "Excel medio", "Carnet de conducir"]
+
+
+def test_generic_word_with_content_is_kept():
+    offer = "Se requiere experiencia en contabilidad analítica."
+    assert clean_keywords(["experiencia en contabilidad"], offer) == ["experiencia en contabilidad"]
+
+
+def test_soft_skills_are_cleaned_and_never_duplicate_keywords():
+    from app.services.match_scorer import clean_soft_skills
+
+    candidates = ["proactiva", "dinámica", "liderazgo", "contabilidad"]
+    soft = clean_soft_skills(candidates, ADMIN_OFFER, ["contabilidad"])
+    assert soft == ["proactiva", "dinámica"]  # "liderazgo" no está en la oferta
+
+
+def test_dropped_keywords_detects_terms_the_candidate_already_had():
+    from app.services.match_scorer import dropped_keywords
+
+    original = "Contabilidad y facturación con Contanet."
+    optimized = "Contabilidad y facturación con software contable."
+    keywords = ["contabilidad", "facturación", "Contanet", "Excel"]
+    assert dropped_keywords(keywords, original, optimized) == ["Contanet"]
+
+
+def test_soft_skills_do_not_affect_the_score():
+    report = score(["contabilidad"], "contabilidad", "contabilidad", soft_skills=["proactiva", "dinámica"])
+    assert report.score_after == 100
+    assert report.soft_skills == ["proactiva", "dinámica"]

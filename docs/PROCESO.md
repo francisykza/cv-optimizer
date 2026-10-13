@@ -28,7 +28,7 @@ El proyecto empezó por el diseño, no por el código. El primer entregable fue 
 - el flujo de datos en memoria, sin persistencia,
 - y la **regla de negocio principal: el sistema no puede inventar experiencia**.
 
-A partir de ahí, cada funcionalidad se encargó al agente como una **especificación acotada**, con contexto, objetivo, restricciones y criterios de aceptación. Antes de tocar código, el agente proponía un plan que el autor revisaba y aprobaba (modo *plan* de Claude Code). El SDD se fue actualizando con cada cambio relevante; hoy va por la versión 1.2.1 e incluye siete decisiones de arquitectura (ADR).
+A partir de ahí, cada funcionalidad se encargó al agente como una **especificación acotada**, con contexto, objetivo, restricciones y criterios de aceptación. Antes de tocar código, el agente proponía un plan que el autor revisaba y aprobaba (modo *plan* de Claude Code). El SDD se fue actualizando con cada cambio relevante; hoy va por la versión 1.2.2 e incluye siete decisiones de arquitectura (ADR).
 
 **Por qué este enfoque con un agente de IA.** Un agente de código es muy productivo, pero tiende a rellenar los huecos de una petición ambigua con suposiciones. Una especificación escrita reduce esos huecos, ofrece un criterio objetivo para revisar el resultado y deja constancia de *por qué* se tomó cada decisión, algo que el código por sí solo no explica.
 
@@ -83,6 +83,7 @@ Los prompts literales de la conversación no se incluyen en el repositorio a pro
 | 6. Producción | Pruebas reales con Groq | Cuatro fallos que solo aparecían en producción, corregidos el mismo día (ver §5) |
 | 7. Experiencia de uso | Scroll fluido, descarga para ATS y resaltado de cambios | Sin tirones en el scroll, exportación DOCX y PDF verificada como legible por ATS, reformulaciones en verde |
 | 8. Validación del resumen | Detectar cualidades inventadas en el resumen | Aviso `UNGROUNDED_CLAIM` y prompt v2 con la regla "resumen sin relleno" |
+| 9. Puntuación honesta | Que la compatibilidad no baje al optimizar y mida requisitos reales | Recuperación automática de keywords perdidas, filtro de genéricas y rasgos personales aparte (prompt v3) |
 
 El historial de commits refleja estas fases y cada mensaje explica el *porqué* del cambio, no solo el *qué*.
 
@@ -97,13 +98,14 @@ Las pruebas con usuarios y servicios reales sacaron a la luz problemas que los t
 | El validador aceptó "más de **2** años de experiencia" | El "2" de "inglés **B2**" contaba como cifra respaldada | El CV original se analiza con la misma regla que el generado: solo cifras sueltas |
 | "Servidor no disponible" en la primera visita del día | Mientras Render despierta el servicio responde sin cabeceras CORS, y el frontend lo trataba como una caída | Reintentos con estado "despertando" durante 2 minutos y botón bloqueado mientras tanto |
 | El resumen incluía "orientada a la mejora continua y al trabajo autónomo" | El LLM rellenaba el resumen con cualidades que el validador no comprobaba | Nuevo aviso de afirmaciones sin respaldo y regla explícita en el prompt v2 |
+| La compatibilidad **bajó** de 17 % a 11 % tras optimizar (prueba desde el móvil con una oferta de administración) | El LLM quitó del CV un término de la oferta que ya estaba. Además, la lista contaba palabras genéricas ("experiencia") y rasgos de personalidad que nunca se añadirán | Corrección automática que recupera las keywords perdidas, filtro de genéricas y rasgos personales mostrados aparte, sin puntuar |
 | Tirones al hacer scroll | Desenfoques de fondo (`backdrop-filter`) en 7 tarjetas y en la cabecera fija, y un `filter: blur()` sobre el halo de la portada | Fondos opacos y degradados. Medido: de 8 elementos con filtro a 0 |
 
 ## 6. Cómo se verificó cada cambio
 
 El criterio fue no dar nada por terminado sin una prueba que lo demostrara:
 
-- **Tests automáticos:** 118 en total (90 en el backend con pytest y 28 en el frontend con Vitest), ejecutados en cada push por la CI.
+- **Tests automáticos:** 127 en total (98 en el backend con pytest y 29 en el frontend con Vitest), ejecutados en cada push por la CI.
 - **Controles negativos:** los tests críticos se comprobaron haciéndolos fallar a propósito. Por ejemplo, el test que garantiza que el PDF nunca se escribe en disco falla si se quita la corrección.
 - **Flujo completo con un LLM simulado:** un servidor local que imita a Groq devolviendo CVs con datos inventados. Así se probó la corrección automática y el resaltado sin gastar cuota.
 - **Seguridad del navegador:** el build de producción se sirvió localmente con la misma Content-Security-Policy que Vercel, para confirmar que la app y las exportaciones no la violan.
@@ -134,17 +136,17 @@ El proyecto aplica a su propio dominio los principios que exige el uso de IA gen
 | Indicador | Valor |
 |---|---|
 | Duración | 2 días (12 y 13 de octubre de 2026) |
-| Especificación | `SDD.md`: ~1.350 líneas, versión 1.2.1, 7 ADRs |
+| Especificación | `SDD.md`: ~1.360 líneas, versión 1.2.2, 7 ADRs |
 | Código | ~4.700 líneas de código de aplicación y ~1.300 de tests, en Python y TypeScript |
-| Tests | 118 (90 en el backend y 28 en el frontend) |
-| Fallos de producción resueltos | 6, cada uno con su test de regresión |
+| Tests | 127 (98 en el backend y 29 en el frontend) |
+| Fallos de producción resueltos | 7, cada uno con su test de regresión |
 | Coste de infraestructura | 0 €: planes gratuitos de Groq, Render y Vercel |
 
 ## 9. Lecciones aprendidas
 
 1. **La especificación es la herramienta de control más eficaz sobre un agente.** Las fases que partían de un encargo bien acotado necesitaron menos iteraciones que las peticiones abiertas.
 2. **Revisar el plan antes del código ahorra más que revisar el código.** Los cambios de rumbo son baratos en el plan y caros en la implementación.
-3. **Los tests simulados no sustituyen a producción.** Cinco de los seis fallos de §5 dependían de servicios reales: el panel de Render, el catálogo de modelos de Groq, el arranque en frío y las respuestas reales del LLM. Probar pronto con servicios reales es imprescindible.
+3. **Los tests simulados no sustituyen a producción.** Seis de los siete fallos de §5 dependían de servicios o datos reales: el panel de Render, el catálogo de modelos de Groq, el arranque en frío y las respuestas reales del LLM ante CVs y ofertas de sectores distintos. Probar pronto con servicios reales es imprescindible.
 4. **Un LLM puede cumplir la letra de una regla sin cumplir su intención.** Respetó "no inventar experiencia", pero añadió cualidades genéricas al resumen. Las reglas de negocio críticas necesitan una verificación determinista fuera del modelo, además de la instrucción en el prompt.
 5. **La autoría y la transparencia no están reñidas.** El autor dirige, decide y responde del resultado; documentar con precisión el papel de la IA forma parte de ese trabajo.
 

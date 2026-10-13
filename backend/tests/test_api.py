@@ -345,3 +345,90 @@ def test_cors_headers_on_error_responses(client):
     assert response.status_code == 422
     assert response.headers["access-control-allow-origin"] == FRONTEND_ORIGIN
     assert "x-request-id" in response.headers["access-control-expose-headers"].lower()
+
+
+# --- Keywords perdidas en la optimización (caso real reportado desde el móvil) ---------------
+
+ADMIN_CV_LINES = [
+    "Laura Perez Gil",
+    "Auxiliar administrativa - Sevilla",
+    "EXPERIENCIA",
+    "Gestoria Sur SL - Auxiliar administrativa (2022 - Actualidad)",
+    "- Contabilidad y facturacion de clientes con Contanet.",
+    "- Gestion Laboral: altas, bajas y nominas.",
+    "FORMACION",
+    "FPI Administracion y Finanzas - IES Triana (2020 - 2022)",
+    "HABILIDADES",
+    "Contanet, Excel, paquete Office",
+]
+ADMIN_OFFER = (
+    "Buscamos auxiliar administrativa con FPI Administracion y Finanzas y 2 anos de experiencia. "
+    "Funciones: contabilidad, facturacion y gestion Laboral. Se valora Contanet y Excel medio. "
+    "Carnet de conducir y vehiculo propio. Persona proactiva, dinamica y organizada. Formacion continua."
+)
+ADMIN_KEYWORDS = ["FPI Administracion y Finanzas", "contabilidad", "facturacion", "Laboral", "Contanet",
+                  "Excel medio", "Carnet de conducir", "experiencia", "Formacion", "2 anos"]
+ADMIN_SOFT = ["proactiva", "dinamica", "organizada"]
+ADMIN_FAITHFUL = (
+    "# Laura Perez Gil\nAuxiliar administrativa - Sevilla\n\n## Experiencia\n"
+    "### Auxiliar administrativa — Gestoria Sur SL\n*2022 - Actualidad*\n"
+    "- Contabilidad y facturacion de clientes con Contanet.\n- Gestion Laboral: altas, bajas y nominas.\n\n"
+    "## Formacion\n**FPI Administracion y Finanzas** — IES Triana (2020 - 2022)\n\n"
+    "## Habilidades\nContanet, Excel, paquete Office"
+)
+ADMIN_DROPS_CONTANET = ADMIN_FAITHFUL.replace("con Contanet", "con software contable").replace(
+    "Contanet, Excel", "Excel"
+)
+
+
+def post_admin(client):
+    from tests.pdf_factory import make_pdf
+
+    return post_optimize(client, pdf=make_pdf([ADMIN_CV_LINES]), offer=ADMIN_OFFER)
+
+
+def admin_payload(markdown):
+    return groq_completion(
+        llm_payload(optimized_markdown=markdown, job_keywords=ADMIN_KEYWORDS, soft_skills=ADMIN_SOFT)
+    )
+
+
+def test_dropped_keyword_triggers_correction_and_is_recovered(client, groq_mock):
+    route = groq_mock.post("/chat/completions").mock(
+        side_effect=[admin_payload(ADMIN_DROPS_CONTANET), admin_payload(ADMIN_FAITHFUL)]
+    )
+
+    body = post_admin(client).json()
+
+    assert route.call_count == 2
+    correction = json.loads(route.calls[1].request.content)["messages"][-1]["content"]
+    assert "Vuelve a incluirlos" in correction and "- Contanet" in correction
+    assert "PROHIBIDO INVENTAR" not in correction  # no había nada inventado
+    assert body["match"]["score_after"] >= body["match"]["score_before"]
+    assert "Contanet" in body["match"]["matched_keywords"]
+    assert not [w for w in body["warnings"] if w["code"] == "KEYWORD_DROPPED"]
+
+
+def test_persistently_dropped_keyword_is_reported_without_marking_review(client, groq_mock):
+    groq_mock.post("/chat/completions").mock(return_value=admin_payload(ADMIN_DROPS_CONTANET))
+
+    body = post_admin(client).json()
+
+    dropped = [w["term"] for w in body["warnings"] if w["code"] == "KEYWORD_DROPPED"]
+    assert dropped == ["Contanet"]
+    assert body["quality"] == "ok"  # perder un término no es inventar
+
+
+def test_score_ignores_generic_words_and_soft_skills(client, groq_mock):
+    groq_mock.post("/chat/completions").mock(return_value=admin_payload(ADMIN_FAITHFUL))
+
+    match = post_admin(client).json()["match"]
+
+    every_keyword = match["matched_keywords"] + match["missing_keywords"]
+    for generic in ("experiencia", "Formacion", "2 anos"):
+        assert generic not in every_keyword
+    assert match["soft_skills"] == ADMIN_SOFT
+    assert not set(ADMIN_SOFT) & set(every_keyword)
+    # Las 4 que tenía el CV se mantienen; faltan Excel medio y Carnet de conducir (no inventados).
+    assert match["score_before"] == match["score_after"]
+    assert set(match["missing_keywords"]) == {"Excel medio", "Carnet de conducir"}

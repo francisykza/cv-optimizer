@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 OutputLanguage = Literal["auto", "es", "en"]
@@ -49,7 +49,22 @@ class PromptBuilder:
     def repair_instruction(self) -> str:
         return _template("repair_json")
 
-    def correction_instruction(self, items: list[str]) -> str:
-        """Pide al LLM que elimine los elementos que el validador no encontró en el CV original."""
-        listed = "\n".join(f"- {escape_user_data(item)}" for item in items)
-        return _template("correct_ungrounded").replace("{{ITEMS}}", listed)
+    def correction_instruction(self, items: list[str], keep: list[str] | tuple[str, ...] = ()) -> str:
+        """Pide al LLM que elimine lo no respaldado (`items`) y que recupere los términos de la
+        oferta que ya estaban en el CV y ha quitado (`keep`)."""
+        sections: list[str] = []
+        if items:
+            listed = "\n".join(f"- {escape_user_data(item)}" for item in items)
+            sections.append(
+                'Incumple la regla "PROHIBIDO INVENTAR". Estos elementos de "optimized_markdown" NO '
+                f"aparecen en el CV original:\n{listed}\n"
+                "Elimínalos o sustitúyelos por lo que dice LITERALMENTE el CV original. Si alguno es un "
+                'requisito de la oferta que el candidato no acredita, quítalo del CV y añádelo a "gaps".'
+            )
+        if keep:
+            listed = "\n".join(f"- {escape_user_data(term)}" for term in keep)
+            sections.append(
+                "Has quitado términos de la oferta que SÍ estaban en el CV original. Vuelve a incluirlos "
+                f"LITERALMENTE donde correspondan:\n{listed}"
+            )
+        return _template("correct_ungrounded").replace("{{SECTIONS}}", "\n\n".join(sections))

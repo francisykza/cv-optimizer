@@ -7,6 +7,8 @@ export interface MatchReport {
   score_after: number
   matched_keywords: string[]
   missing_keywords: string[]
+  /** Rasgos personales de la oferta: se muestran aparte y no puntúan. */
+  soft_skills: string[]
 }
 
 export interface OptimizeMeta {
@@ -28,6 +30,7 @@ export type WarningCode =
   | 'GAP_LEAKED'
   | 'FORMAT'
   | 'LIMITED_CHECK'
+  | 'KEYWORD_DROPPED'
 
 export interface ValidationWarning {
   code: WarningCode

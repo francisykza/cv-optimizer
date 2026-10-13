@@ -1,4 +1,4 @@
-import { FileWarning, Info, LocateFixed, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { FileWarning, Info, LocateFixed, SearchX, ShieldAlert, ShieldCheck } from 'lucide-react'
 
 import { cn } from '../../lib/format'
 import { UNGROUNDED_CODES, type ValidationWarning, type WarningCode } from '../../types/api'
@@ -12,6 +12,7 @@ const LABELS: Record<WarningCode, string> = {
   GAP_LEAKED: 'Requisito de la oferta',
   FORMAT: 'Formato',
   LIMITED_CHECK: 'Aviso',
+  KEYWORD_DROPPED: 'Palabra clave',
 }
 
 interface WarningsPanelProps {
@@ -93,7 +94,7 @@ function OtherWarnings({ warnings }: { warnings: ValidationWarning[] }) {
   return (
     <ul className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
       {warnings.map((w) => {
-        const Icon = w.code === 'FORMAT' ? FileWarning : Info
+        const Icon = w.code === 'FORMAT' ? FileWarning : w.code === 'KEYWORD_DROPPED' ? SearchX : Info
         return (
           <li key={`${w.code}-${w.term}`} className={cn('flex gap-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400')}>
             <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />

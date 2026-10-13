@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.2.1 |
+| **Versión** | 1.2.2 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -18,6 +18,7 @@
 | 1.1.0 | 2026-10-12 | Ajustes tras implementar el MVP: endpoint `POST /api/v1/keys/validate`; validador con comprobación de keywords filtradas, aviso `LIMITED_CHECK` para CVs traducidos y corrección automática desde el primer dato no respaldado; runtime Python 3.12.10 nativo en Render. |
 | 1.2.0 | 2026-10-13 | Exportación DOCX/PDF apta para ATS generada en el cliente (ADR-007), resaltado en verde de las reformulaciones (`changes`, §9.6) y mejoras de rendimiento del scroll. |
 | 1.2.1 | 2026-10-13 | Validador: afirmaciones del resumen sin respaldo (`UNGROUNDED_CLAIM`) y prompt v2 con la regla "resumen sin relleno". |
+| 1.2.2 | 2026-10-13 | Puntuación: keywords verificables sin genéricas, `soft_skills` aparte, corrección de keywords perdidas y aviso `KEYWORD_DROPPED`; prompt v3. |
 
 ---
 
@@ -716,10 +717,11 @@ Es un componente **determinista** que contrasta el Markdown generado con el text
 
 La puntuación **no** la inventa el LLM. Se calcula en el backend:
 
-1. El LLM extrae `job_keywords` de la oferta. Es lo único "interpretativo" que se le pide, y se filtran las keywords que no aparecen literalmente en la oferta.
+1. El LLM extrae de la oferta `job_keywords`, requisitos **verificables** (herramientas, titulaciones, certificaciones, idiomas, requisitos como el carnet), y por separado `soft_skills`, rasgos personales. Es lo único "interpretativo" que se le pide. El backend descarta las keywords que no aparecen literalmente en la oferta y las genéricas sin contenido ("experiencia", "formación", "años", cifras sueltas). Las keywords se fijan con la primera extracción, para que antes y después se midan sobre la misma lista.
 2. `score_before` = % de `job_keywords` presentes en el **CV original** (normalizado, sin distinguir mayúsculas, con diccionario de sinónimos).
 3. `score_after` = % de `job_keywords` presentes en el **CV optimizado**.
-4. `matched_keywords` / `missing_keywords` se derivan del cálculo anterior.
+4. `matched_keywords` / `missing_keywords` se derivan del cálculo anterior. Las `soft_skills` se devuelven aparte y **no puntúan**: no se pueden verificar en un CV y el prompt prohíbe añadirlas.
+5. **La optimización no puede restar.** Si el CV optimizado pierde una keyword que estaba en el original, se pide una corrección para recuperarla (regla 7 del prompt v3). Si aun así se pierde, se avisa con `KEYWORD_DROPPED`, que es informativo y no marca el CV como "revisar".
 
 Así, la mejora es honesta: un `score_after` alto solo es posible si el candidato **ya tenía** esas competencias y ahora se expresan con la terminología de la oferta.
 

@@ -16,6 +16,7 @@ from app.schemas.optimize import (
     OptimizeMeta,
     OptimizeResponse,
     TokenUsageOut,
+    ValidationWarning,
 )
 from app.services import match_scorer
 from app.services.change_detector import detect_changes
@@ -74,28 +75,51 @@ class OptimizerService:
         messages = [ChatMessage("system", prompt.system), ChatMessage("user", prompt.user)]
         output, responses = await self._complete_json(provider, messages)
 
-        # Capa 4 del SDD: validación determinista + una corrección si hay datos no respaldados.
+        # Las keywords se fijan con la primera extracción: la oferta no cambia entre llamadas y así
+        # la puntuación de antes y después se mide siempre sobre la misma lista.
         keywords = match_scorer.clean_keywords(output.job_keywords, job_offer)
+        soft_skills = match_scorer.clean_soft_skills(output.soft_skills, job_offer, keywords)
+
+        # Capa 4 del SDD: validación determinista + una corrección si hay datos no respaldados o
+        # si la optimización ha quitado términos de la oferta que el candidato ya tenía.
         report = self._validator.validate(output.optimized_markdown, extracted.text, keywords)
-        first_ungrounded = report.ungrounded_count
+        dropped = match_scorer.dropped_keywords(keywords, extracted.text, output.optimized_markdown)
+        first_ungrounded, first_dropped = report.ungrounded_count, len(dropped)
         corrections = 0
         while (
-            report.ungrounded_count >= self._settings.validator_correction_threshold
-            and corrections < self._settings.validator_max_corrections
-        ):
+            report.ungrounded_count >= self._settings.validator_correction_threshold or dropped
+        ) and corrections < self._settings.validator_max_corrections:
             corrections += 1
-            corrected = await self._correct(provider, messages, responses[-1], report)
+            corrected = await self._correct(provider, messages, responses[-1], report, dropped)
             if corrected is None:
                 break
             new_output, new_responses = corrected
             responses += new_responses
-            new_keywords = match_scorer.clean_keywords(new_output.job_keywords, job_offer)
-            new_report = self._validator.validate(new_output.optimized_markdown, extracted.text, new_keywords)
-            if new_report.ungrounded_count <= report.ungrounded_count:
-                output, keywords, report = new_output, new_keywords, new_report
+            new_report = self._validator.validate(new_output.optimized_markdown, extracted.text, keywords)
+            new_dropped = match_scorer.dropped_keywords(
+                keywords, extracted.text, new_output.optimized_markdown
+            )
+            # Prioridad: menos datos no respaldados; a igualdad, menos keywords perdidas.
+            if (new_report.ungrounded_count, len(new_dropped)) <= (report.ungrounded_count, len(dropped)):
+                output, report, dropped = new_output, new_report, new_dropped
+
+        for kw in dropped:
+            # Informativo: no es un dato inventado, así que no cambia la calidad a "revisar".
+            report.warnings.append(
+                ValidationWarning(
+                    code="KEYWORD_DROPPED",
+                    message=f"'{kw}' estaba en tu CV original y la versión optimizada lo ha quitado. "
+                    "Vuelve a añadirlo si es relevante para la oferta.",
+                    term=kw,
+                )
+            )
 
         match = match_scorer.score(
-            keywords, extracted.text, output.optimized_markdown, exclude=report.leaked_keywords
+            keywords,
+            extracted.text,
+            output.optimized_markdown,
+            exclude=report.leaked_keywords,
+            soft_skills=soft_skills,
         )
         quality = "needs_review" if report.ungrounded_count else "ok"
         # Lo marcado en ámbar por el validador no es una reformulación: se excluye del verde.
@@ -114,10 +138,10 @@ class OptimizerService:
         logger.info(
             "optimize_done request_id=%s mode=%s model=%s pages=%d cv_chars=%d offer_chars=%d "
             "tokens_in=%d tokens_out=%d llm_calls=%d ungrounded_first=%d ungrounded_final=%d "
-            "corrections=%d quality=%s latency_ms=%d",
+            "corrections=%d dropped_first=%d dropped_final=%d quality=%s latency_ms=%d",
             request_id, mode, responses[-1].model, extracted.pages, len(extracted.text),
             len(job_offer), tokens.input, tokens.output, len(responses), first_ungrounded,
-            report.ungrounded_count, corrections, quality, latency_ms,
+            report.ungrounded_count, corrections, first_dropped, len(dropped), quality, latency_ms,
         )
 
         return OptimizeResponse(
@@ -146,14 +170,16 @@ class OptimizerService:
         messages: list[ChatMessage],
         previous: LLMResponse,
         report: ValidationReport,
+        dropped: list[str],
     ) -> tuple[LLMOptimizeOutput, list[LLMResponse]] | None:
-        """Pide al LLM que elimine lo no respaldado. Si la corrección falla, se conserva el
-        resultado original (con sus avisos visibles) en lugar de perder toda la petición."""
+        """Pide al LLM que elimine lo no respaldado y recupere los términos de la oferta que ya
+        estaban en el CV. Si la corrección falla, se conserva el resultado original (con sus
+        avisos visibles) en lugar de perder toda la petición."""
         items = [w.term or w.message for w in report.ungrounded]
         correction_messages = [
             *messages,
             ChatMessage("assistant", previous.content),
-            ChatMessage("user", self._prompts.correction_instruction(items)),
+            ChatMessage("user", self._prompts.correction_instruction(items, dropped)),
         ]
         try:
             return await self._complete_json(provider, correction_messages)
