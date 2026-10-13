@@ -32,6 +32,7 @@
 - [API](#api)
 - [Despliegue (Render + Vercel)](#despliegue-render--vercel)
 - [Roadmap](#roadmap)
+- [Cómo se ha construido](#cómo-se-ha-construido)
 - [Licencia](#licencia)
 
 ## ¿Qué hace?
@@ -287,6 +288,12 @@ El backend va primero, porque el frontend necesita su URL.
 - [ ] OCR para PDFs escaneados.
 - [ ] Más proveedores BYOK (OpenAI, Anthropic) sobre la misma interfaz `LLMProvider`.
 - [ ] Streaming del progreso real (SSE).
+
+## Cómo se ha construido
+
+El proyecto se ha desarrollado con **desarrollo guiado por especificación**: primero el [SDD](SDD.md) y después la implementación, por fases. Como agente de implementación se ha usado **Claude Code** (Anthropic). El autor ha definido el producto y las reglas de negocio, ha aprobado cada plan antes de implementarlo y ha probado la aplicación en producción. El agente ha escrito el código y los tests y se ha encargado de la verificación técnica.
+
+En [`docs/PROCESO.md`](docs/PROCESO.md) se detallan el reparto de responsabilidades, el ciclo de trabajo, los fallos que solo aparecieron en producción y cómo se resolvieron, las prácticas de verificación y las lecciones aprendidas.
 
 ## Licencia
 

@@ -50,6 +50,8 @@ Este documento describe la arquitectura, los componentes, los contratos de la AP
 
 El SDD sirve de referencia única para implementar el MVP y de pieza de portfolio: explica el *qué*, el *cómo* y, sobre todo, el *por qué* de cada decisión.
 
+El proceso seguido para construir el proyecto a partir de este documento (desarrollo guiado por especificación con un agente de IA) se describe en [`docs/PROCESO.md`](docs/PROCESO.md).
+
 ### 1.2 Alcance
 
 **Dentro del alcance (MVP):**
