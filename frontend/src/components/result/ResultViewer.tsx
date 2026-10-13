@@ -1,9 +1,11 @@
-import { Code2, Download, Eye, FileCheck2, Lightbulb, RotateCcw, ShieldAlert } from 'lucide-react'
+import { Code2, Eye, FileCheck2, Lightbulb, RotateCcw, ShieldAlert } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { cn, formatNumber } from '../../lib/format'
+import type { HighlightGroup } from '../../lib/rehypeHighlightTerms'
 import { UNGROUNDED_CODES, type OptimizeResponse } from '../../types/api'
 import { CopyButton } from './CopyButton'
+import { DownloadMenu } from './DownloadMenu'
 import { InsightList } from './InsightList'
 import { KeywordList } from './KeywordList'
 import { MarkdownPreview } from './MarkdownPreview'
@@ -17,28 +19,25 @@ interface ResultViewerProps {
   onReset: () => void
 }
 
-function downloadMarkdown(markdown: string) {
-  const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'cv-optimizado.md'
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
 export function ResultViewer({ result, onReset }: ResultViewerProps) {
   const [tab, setTab] = useState<Tab>('preview')
+  const [showChanges, setShowChanges] = useState(true)
   const previewRef = useRef<HTMLDivElement>(null)
   const { optimized_markdown: markdown, meta } = result
 
   const ungrounded = result.warnings.filter((w) => UNGROUNDED_CODES.has(w.code))
-  const highlightTerms = ungrounded.map((w) => w.term).filter((t): t is string => Boolean(t))
+  const changes = result.changes ?? []
+  // Solo para la vista previa: copiar y descargar usan siempre el Markdown sin marcas.
+  const highlightGroups: HighlightGroup[] = [
+    { kind: 'ungrounded', terms: ungrounded.map((w) => w.term).filter((t): t is string => Boolean(t)) },
+    ...(showChanges ? [{ kind: 'change' as const, terms: changes }] : []),
+  ]
 
   /** Lleva al usuario al primer resaltado del término en la vista previa y lo hace parpadear. */
   const locate = (term: string) => {
     setTab('preview')
     requestAnimationFrame(() => {
-      const marks = previewRef.current?.querySelectorAll<HTMLElement>('mark[data-term]') ?? []
+      const marks = previewRef.current?.querySelectorAll<HTMLElement>('mark[data-kind="ungrounded"]') ?? []
       const target = [...marks].find((m) => m.dataset.term === term)
       if (!target) return
       target.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -65,13 +64,7 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
         </div>
         <div className="flex flex-wrap gap-2">
           <CopyButton text={markdown} />
-          <button
-            type="button"
-            onClick={() => downloadMarkdown(markdown)}
-            className="focus-ring inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
-          >
-            <Download className="size-4" aria-hidden /> Descargar .md
-          </button>
+          <DownloadMenu markdown={markdown} />
           <button
             type="button"
             onClick={onReset}
@@ -98,7 +91,8 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="card overflow-hidden">
-          <div role="tablist" aria-label="Formato del resultado" className="flex gap-1 border-b border-slate-200 px-3 pt-3 dark:border-slate-800">
+          <div className="flex flex-wrap items-end justify-between gap-x-4 border-b border-slate-200 px-3 pt-3 dark:border-slate-800">
+          <div role="tablist" aria-label="Formato del resultado" className="flex gap-1">
             {(
               [
                 { id: 'preview', label: 'Vista previa', icon: Eye },
@@ -124,6 +118,10 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
               </button>
             ))}
           </div>
+          {tab === 'preview' && changes.length > 0 && (
+            <ChangesToggle checked={showChanges} onChange={setShowChanges} count={changes.length} />
+          )}
+          </div>
 
           <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
             {tab === 'preview' ? (
@@ -133,7 +131,7 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
                   ref={previewRef}
                   className="mx-auto max-w-3xl rounded-lg bg-white px-6 py-8 shadow-md shadow-slate-900/5 ring-1 ring-slate-200 sm:px-12 sm:py-12 dark:bg-slate-900 dark:ring-slate-800"
                 >
-                  <MarkdownPreview markdown={markdown} highlightTerms={highlightTerms} />
+                  <MarkdownPreview markdown={markdown} highlightGroups={highlightGroups} />
                 </div>
               </div>
             ) : (
@@ -158,6 +156,46 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
           <InsightList title="Cambios realizados" items={result.changes_summary} icon={Lightbulb} tone="indigo" />
         </aside>
       </div>
+    </div>
+  )
+}
+
+function ChangesToggle({ checked, onChange, count }: { checked: boolean; onChange: (v: boolean) => void; count: number }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pb-2.5 text-xs text-slate-600 dark:text-slate-400">
+      <label className="inline-flex cursor-pointer items-center gap-2 font-medium">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={checked}
+          aria-label="Resaltar cambios"
+          onClick={() => onChange(!checked)}
+          className={cn(
+            'focus-ring relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
+            checked ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700',
+          )}
+        >
+          <span
+            className={cn(
+              'inline-block size-4 rounded-full bg-white shadow transition-transform',
+              checked ? 'translate-x-[18px]' : 'translate-x-0.5',
+            )}
+          />
+        </button>
+        Resaltar cambios ({count})
+      </label>
+      {checked && (
+        <span className="flex items-center gap-3" aria-hidden>
+          <span className="flex items-center gap-1.5">
+            <span className="size-2.5 rounded-sm bg-emerald-200 ring-1 ring-emerald-300 dark:bg-emerald-500/30 dark:ring-emerald-500/40" />
+            Reformulado
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-2.5 rounded-sm bg-amber-200 ring-1 ring-amber-300 dark:bg-amber-400/30 dark:ring-amber-400/40" />
+            No está en tu CV
+          </span>
+        </span>
+      )}
     </div>
   )
 }

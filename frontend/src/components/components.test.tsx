@@ -14,6 +14,7 @@ const RESULT: OptimizeResponse = {
   gaps: ['Kubernetes'],
   changes_summary: ['Resumen orientado a backend.'],
   warnings: [],
+  changes: [],
   quality: 'ok',
   meta: {
     mode: 'server',
@@ -97,6 +98,43 @@ describe('ResultViewer', () => {
     expect(screen.getByText('Revisa 2 datos')).toBeInTheDocument()
     expect(screen.getByText('Revisa este CV antes de usarlo.')).toBeInTheDocument()
     expect(screen.getByText('Contiene tablas.')).toBeInTheDocument() // FORMAT: aviso, no resaltado
+  })
+
+  it('resalta en verde las reformulaciones y se puede desactivar', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    const result: OptimizeResponse = {
+      ...RESULT,
+      optimized_markdown: '# Ana García\n\n- Diseñé APIs con **FastAPI** y Kubernetes.',
+      changes: ['Diseñé', 'Kubernetes'], // "Kubernetes" también está en ámbar: debe ganar el ámbar
+      warnings: [{ code: 'GAP_LEAKED', message: 'x', term: 'Kubernetes', snippet: null }],
+      quality: 'needs_review',
+    }
+    render(<ResultViewer result={result} onReset={() => {}} />)
+
+    const kinds = () => Object.fromEntries([...document.querySelectorAll('mark')].map((m) => [m.textContent, m.dataset.kind]))
+    expect(kinds()).toEqual({ Diseñé: 'change', Kubernetes: 'ungrounded' })
+
+    await user.click(screen.getByRole('switch', { name: /resaltar cambios/i }))
+    expect(kinds()).toEqual({ Kubernetes: 'ungrounded' }) // el ámbar no se oculta nunca
+
+    // Copiar usa siempre el Markdown limpio, sin marcas.
+    await user.click(screen.getByRole('button', { name: /copiar al portapapeles/i }))
+    expect(writeText).toHaveBeenCalledWith(result.optimized_markdown)
+  })
+
+  it('ofrece la descarga en Word, PDF y Markdown', async () => {
+    const user = userEvent.setup()
+    render(<ResultViewer result={RESULT} onReset={() => {}} />)
+
+    await user.click(screen.getByRole('button', { name: /descargar/i }))
+    const items = screen.getAllByRole('menuitem').map((i) => i.textContent)
+    expect(items[0]).toMatch(/Word \(\.docx\).*Recomendado para ATS/)
+    expect(items[1]).toMatch(/PDF/)
+    expect(items[2]).toMatch(/Markdown/)
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 
   it('copia el Markdown al portapapeles', async () => {

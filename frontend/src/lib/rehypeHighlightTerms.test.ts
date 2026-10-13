@@ -15,6 +15,24 @@ describe('buildTermsRegExp', () => {
     expect('Universidad de Oxford y C++'.match(re)).toEqual(['Universidad de Oxford', 'C++'])
   })
 
+  it('prioriza los avisos ámbar sobre los cambios en verde', async () => {
+    const { rehypeHighlightTerms } = await import('./rehypeHighlightTerms')
+    const tree = { type: 'root', children: [{ type: 'text', value: 'Kubernetes y Diseñé' }] }
+    rehypeHighlightTerms({
+      groups: [
+        { kind: 'change', terms: ['Kubernetes', 'Diseñé'] },
+        { kind: 'ungrounded', terms: ['kubernetes'] },
+      ],
+    })(tree)
+    const marks = tree.children
+      .filter((n): n is { type: 'element'; properties: Record<string, string> } & typeof n => n.type === 'element')
+      .map((n) => (n as unknown as { properties: Record<string, string> }).properties)
+    expect(marks).toEqual([
+      { dataTerm: 'kubernetes', dataKind: 'ungrounded' },
+      { dataTerm: 'Diseñé', dataKind: 'change' },
+    ])
+  })
+
   it('devuelve null sin términos', () => {
     expect(buildTermsRegExp(['', '  '])).toBeNull()
   })

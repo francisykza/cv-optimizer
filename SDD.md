@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.1.0 |
+| **Versión** | 1.2.0 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -16,6 +16,7 @@
 |---|---|---|
 | 1.0.0 | 2026-10-12 | Versión inicial: arquitectura, LLM híbrido, flujo en memoria, reglas anti-alucinación. |
 | 1.1.0 | 2026-10-12 | Ajustes tras implementar el MVP: endpoint `POST /api/v1/keys/validate`; validador con comprobación de keywords filtradas, aviso `LIMITED_CHECK` para CVs traducidos y corrección automática desde el primer dato no respaldado; runtime Python 3.12.10 nativo en Render. |
+| 1.2.0 | 2026-10-13 | Exportación DOCX/PDF apta para ATS generada en el cliente (ADR-007), resaltado en verde de las reformulaciones (`changes`, §9.6) y mejoras de rendimiento del scroll. |
 
 ---
 
@@ -1094,8 +1095,19 @@ stateDiagram-v2
 - Tailwind con tokens propios en `tailwind.config.ts` (colores de marca, `fontFamily`), modo oscuro con `class` y `prefers-color-scheme`.
 - Componentes accesibles: etiquetas asociadas, `aria-live="polite"` para estados de carga y error, foco gestionado al cambiar de pantalla, contraste AA y navegación completa con teclado (la zona de arrastre también se activa con Enter o Espacio).
 - Responsive *mobile-first*.
+- **Rendimiento del scroll:** nada de `backdrop-filter` ni `filter: blur()` sobre elementos grandes o repetidos (tarjetas, cabecera fija, halo de la portada); los efectos de fondo se resuelven con gradientes y capas propias (`transform-gpu`). Sin `scroll-behavior: smooth` global: el desplazamiento suave se aplica solo a los `scrollIntoView` programáticos.
 
-### 9.6 Dependencias principales (frontend)
+### 9.6 Exportación y resaltado de cambios
+
+- **Formatos de descarga:** Word (`.docx`, recomendado para ATS), PDF y Markdown. Se generan **en el navegador** a partir del Markdown limpio:
+  1. `markdownToBlocks` (unified + remark) produce una representación intermedia de encabezados, párrafos y viñetas con negrita y cursiva.
+  2. `toDocx` (librería `docx`) usa los estilos nativos `Heading 1/2/3` y viñetas reales.
+  3. `toPdf` (pdfmake + Roboto) genera texto real y líneas vectoriales, **nunca imágenes**.
+- **Carga diferida:** las librerías de exportación se cargan con `import()` solo al pulsar descargar, sin afectar a la carga inicial.
+- **Resaltado de cambios:** el backend devuelve `changes`, las expresiones del CV optimizado que no estaban en el original. Las calcula `change_detector.py` palabra a palabra, normalizando tildes, plurales y sinónimos, de modo que reordenar no cuenta y reformular sí.
+- **Cómo se muestra:** la vista previa las marca en verde (activable con un interruptor) y los datos no respaldados del validador siguen en ámbar, con prioridad sobre el verde. Copiar y descargar usan siempre el Markdown sin marcas.
+
+### 9.7 Dependencias principales (frontend)
 
 | Paquete | Uso |
 |---|---|
@@ -1285,6 +1297,21 @@ docker compose up --build
 
 - **Decisión:** un repositorio, dos aplicaciones independientes con sus propios toolchains y despliegues.
 - **Consecuencias:** (+) visión completa para quien revisa el portfolio, PRs atómicas para los cambios de contrato y CI con filtros por ruta. (−) Los tipos del frontend se mantienen a mano. Mejora prevista: generarlos desde OpenAPI (`openapi-typescript`).
+
+### ADR-007: Exportación DOCX + PDF generada en el cliente
+
+- **Contexto:**
+  - El usuario necesita un archivo que pueda subir a un portal de empleo.
+  - DOCX es el formato que mejor leen todos los ATS, incluidos los antiguos.
+  - Un PDF con texto real lo leen bien los ATS modernos y es lo que más se envía.
+  - Un PDF hecho con captura de pantalla (`html2canvas`) es una imagen y un ATS no puede leerlo.
+- **Decisión:**
+  - Ofrecer DOCX (marcado como recomendado) y PDF con texto real, generados en el navegador con `docx` y pdfmake.
+  - Las librerías se cargan solo al exportar.
+- **Consecuencias:**
+  - (+) El CV no vuelve a viajar al servidor (privacidad) y el backend sigue siendo *stateless* y sin dependencias de maquetación.
+  - (+) La carga inicial no empeora.
+  - (−) Los fragmentos de exportación pesan (~1 MB pdfmake + ~0,85 MB de fuentes) y se descargan la primera vez que se pide un PDF.
 
 ---
 

@@ -42,6 +42,8 @@ export interface OptimizeResponse {
   gaps: string[]
   changes_summary: string[]
   warnings: ValidationWarning[]
+  /** Expresiones reformuladas respecto al CV original (se resaltan en verde en la vista previa). */
+  changes: string[]
   quality: 'ok' | 'needs_review'
   meta: OptimizeMeta
 }

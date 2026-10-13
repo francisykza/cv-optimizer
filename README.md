@@ -10,7 +10,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Python](https://img.shields.io/badge/Python_3.12-3776AB?logo=python&logoColor=white)
 ![Groq](https://img.shields.io/badge/LLM-Groq-F55036)
-![Tests](https://img.shields.io/badge/tests-92_passing-22C55E)
+![Tests](https://img.shields.io/badge/tests-111_passing-22C55E)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/hero-dark.jpg" alt="Página de inicio de CV-Optimizer" width="800" />
@@ -40,7 +40,8 @@
 2. Un LLM reescribe el CV con la terminología de la oferta, en un formato limpio de una columna que los ATS leen bien.
 3. Un **validador determinista** comprueba que todo lo que aparece en el CV optimizado estaba en tu CV original.
 4. Recibes:
-   - El **CV en Markdown**, para copiar o descargar.
+   - El **CV optimizado**, con las **reformulaciones resaltadas en verde** respecto a tu original (solo en pantalla).
+   - Descarga en **Word (.docx)**, **PDF** con texto real o Markdown, sin ningún resaltado.
    - La **compatibilidad antes y después** con la oferta.
    - Las palabras clave cubiertas y las que faltan.
    - Los **gaps**: lo que pide la oferta y tú no acreditas. Se te informa, pero nunca se añade al CV.
@@ -49,6 +50,7 @@
 |---|---|
 | Modo gratuito | Usa la clave de Groq del servidor, con un límite por IP. |
 | **BYOK** (*Bring Your Own Key*) | Introduces tu propia API key de Groq: sin límites, y la clave nunca se guarda. |
+| Exportación para ATS | **DOCX** (recomendado: lo leen todos los ATS, con estilos de título y viñetas nativas de Word) y **PDF** con texto seleccionable, nunca una imagen. Se generan en el navegador, así que el CV no vuelve a subirse. |
 | Arranque en frío | El frontend "despierta" el backend de Render al cargar la página y avisa si tarda. |
 | Accesibilidad | Navegación por teclado, `aria-live` en los estados de carga y modo oscuro automático. |
 
@@ -197,17 +199,19 @@ La lista completa está en [`backend/.env.example`](backend/.env.example) y [`co
 ## Tests y calidad
 
 ```bash
-cd backend && pytest -q && ruff check app tests     # 73 tests
-cd frontend && npm test && npm run build             # 19 tests + typecheck + build
+cd backend && pytest -q && ruff check app tests     # 84 tests
+cd frontend && npm test && npm run build             # 27 tests + typecheck + build
 ```
 
 Qué cubren:
 
 - **Validador anti-invención:** fechas, cifras, entidades, habilidades, gaps filtrados, sinónimos aceptados, falsos positivos y CVs traducidos.
+- **Detector de reformulaciones:** reformular se marca, reordenar no; ignora palabras vacías, tildes, plurales y sinónimos, y no pisa los avisos en ámbar.
 - **Flujo completo con el LLM simulado** (`respx`): corrección automática, `needs_review`, JSON inválido y su reparación, reserva ante un 429, *timeouts* y clave BYOK inválida.
 - **Privacidad:** el PDF no se escribe en disco y no hay claves ni contenido en los logs.
 - **Seguridad:** inyección de prompts mediante delimitadores, CORS (incluidas las respuestas de error), límite de tamaño y rate limit.
-- **Frontend:** subida y validación del PDF, Markdown renderizado sin ejecutar HTML, resaltado de avisos, portapapeles (con método alternativo) y que la clave BYOK nunca acabe en `localStorage`.
+- **Frontend:** subida y validación del PDF, Markdown renderizado sin ejecutar HTML, resaltado en verde y ámbar con su interruptor, portapapeles (con método alternativo), arranque en frío y que la clave BYOK nunca acabe en `localStorage`.
+- **Exportación:** el DOCX es un ZIP válido con estilos `Heading1/2` y viñetas nativas; el PDF no contiene imágenes, y se ha comprobado con `pypdf` que su texto (tildes y ñ incluidas) se extrae completo.
 
 La CI ([`ci.yml`](.github/workflows/ci.yml)) ejecuta lint, tests y build en cada push y en cada pull request.
 
@@ -276,8 +280,9 @@ El backend va primero, porque el frontend necesita su URL.
 
 ## Roadmap
 
-- [ ] Exportar a PDF/DOCX con plantillas compatibles con ATS.
-- [ ] Vista diff entre el CV original y el optimizado.
+- [x] Exportar a PDF/DOCX compatibles con ATS.
+- [x] Resaltar en pantalla lo reformulado respecto al CV original.
+- [ ] Vista diff lado a lado entre el CV original y el optimizado.
 - [ ] OCR para PDFs escaneados.
 - [ ] Más proveedores BYOK (OpenAI, Anthropic) sobre la misma interfaz `LLMProvider`.
 - [ ] Streaming del progreso real (SSE).
