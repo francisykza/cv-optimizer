@@ -48,7 +48,7 @@ export interface OptimizeResponse {
   warnings: ValidationWarning[]
   /** Expresiones reformuladas respecto al CV original (se resaltan en verde en la vista previa). */
   changes: string[]
-  /** Requisitos verificables de la oferta que no están en el CV original (máx. 5). */
+  /** Requisitos verificables de la oferta que no están en el CV original (máx. 6). */
   ats_suggestions: string[]
   quality: 'ok' | 'needs_review'
   meta: OptimizeMeta

@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.3.0 |
+| **Versión** | 1.4.0 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -20,6 +20,7 @@
 | 1.2.1 | 2026-10-13 | Validador: afirmaciones del resumen sin respaldo (`UNGROUNDED_CLAIM`) y prompt v2 con la regla "resumen sin relleno". |
 | 1.2.2 | 2026-10-13 | Puntuación: keywords verificables sin genéricas, `soft_skills` aparte, corrección de keywords perdidas y aviso `KEYWORD_DROPPED`; prompt v3. |
 | 1.3.0 | 2026-10-13 | Sugerencias ATS que el usuario añade con un clic (`ats_suggestions`, §9.7, ADR-008); notificaciones con `react-hot-toast`. |
+| 1.4.0 | 2026-10-13 | Textarea inteligente de la oferta (§9.8): enlace vía `POST /api/v1/extract-job-url` (Jina Reader), capturas con OCR en el navegador (tesseract.js) y limpieza del texto copiado; prompt v4 (ignorar el ruido de la web); hasta 6 sugerencias ATS; ADR-009. |
 
 ---
 
@@ -289,6 +290,9 @@ El blueprint definitivo está en [`render.yaml`](render.yaml). Usa el **runtime 
 | `LLM_TIMEOUT_S` | Backend | No (60) | Timeout de la llamada al LLM. |
 | `RATE_LIMIT_SERVER_KEY` | Backend | No (`5/minute;30/day`) | Límite por IP en el modo servidor. |
 | `LOG_LEVEL` | Backend | No (`INFO`) | Nivel de log. |
+| `JINA_API_KEY` | Backend | No | Clave de Jina Reader. Sin ella, Jina limita a unas 20 peticiones/minuto por IP. Es un secreto. |
+| `JOB_URL_TIMEOUT_S` | Backend | No (8) | Timeout de la lectura de una oferta por URL. |
+| `JOB_URL_PER_MINUTE` | Backend | No (10) | Límite por IP del endpoint `extract-job-url`. |
 | `VITE_API_BASE_URL` | Frontend | Sí | URL pública del backend. |
 | `VITE_ENABLE_BYOK` | Frontend | No (`true`) | Feature flag del modo BYOK. |
 
@@ -818,6 +822,24 @@ Comprueba una clave BYOK llamando a `GET /models` del proveedor, que no consume 
 { "valid": true, "provider": "groq" }
 ```
 
+#### `POST /api/v1/extract-job-url`
+
+Obtiene el texto de una oferta a partir de su enlace. El backend no se conecta a la URL: la lee Jina Reader (`https://r.jina.ai/{url}`, timeout de 8 s) y el backend limpia el resultado (cabecera de Jina, imágenes, enlaces y líneas en blanco) y lo limita a 10.000 caracteres. Límite propio por IP (10/min).
+
+```json
+POST { "url": "https://empresa.example/empleo/123" }
+200 OK
+{ "text": "Auxiliar administrativo/a\n\nFunciones: ..." }
+```
+
+| Caso | Respuesta |
+|---|---|
+| URL no pública (otro esquema, `localhost`, IP privada, `.local`) | 422 `INVALID_JOB_URL`, sin llamar a Jina |
+| Portal bloqueado (403, 429, error o timeout de Jina) | 422 `JOB_URL_UNREADABLE` |
+| Jina responde 200 con un muro de login, de cookies o una página de error | 422 `JOB_URL_UNREADABLE` (detección por contenido) |
+
+El mensaje de `JOB_URL_UNREADABLE` indica qué hacer: "Este portal bloquea enlaces directos. Entra en la oferta, pulsa Ctrl+A para copiar todo o pega aquí una captura de pantalla con Ctrl+V".
+
 #### `GET /api/v1/providers` (v1.1, no implementado en el MVP)
 
 ```json
@@ -1118,7 +1140,7 @@ stateDiagram-v2
 
 ### 9.7 Sugerencias ATS (interacción con un clic)
 
-- **Qué son:** hasta 5 requisitos **verificables** de la oferta (herramientas, titulaciones, certificaciones, carnés…) que no están en el CV original. Nunca rasgos personales.
+- **Qué son:** hasta 6 requisitos **verificables** de la oferta (herramientas, titulaciones, certificaciones, carnés…) que no están en el CV original. Nunca rasgos personales.
 - **Origen determinista:** el backend las calcula en `match_scorer.ats_suggestions()` a partir de `missing_keywords`, excluyendo lo que ya aparece en el CV original o en el optimizado. No se piden al LLM (ADR-008).
 - **Contrato:** campo adicional `ats_suggestions: string[]` en `OptimizeResponse`. El resto de la respuesta no cambia.
 - **Regla de negocio, "afirmación del usuario frente a la de la IA":**
@@ -1143,7 +1165,27 @@ stateDiagram-v2
   - Los errores de la API muestran `toast.error` además del `ErrorAlert`, que conserva las acciones de reintentar y usar la clave propia.
 - **Mientras hay una petición en curso:** los inputs están desactivados y el resultado se sustituye por el esqueleto de carga, así que no se puede interactuar con los chips.
 
-### 9.8 Dependencias principales (frontend)
+### 9.8 Textarea inteligente de la oferta
+
+Un único campo acepta la oferta en tres formas. El `textarea` intercepta `onPaste` (hook `useSmartPaste`) y decide según el portapapeles:
+
+| Contenido pegado | Qué ocurre |
+|---|---|
+| **Un único enlace** `http(s)://` | Llama a `POST /api/v1/extract-job-url` y añade el texto devuelto. Si el portal lo bloquea, muestra el aviso con las alternativas (Ctrl+A o captura). |
+| **Una imagen sin texto** (captura con Ctrl+V) | OCR en el navegador con tesseract.js (español + inglés), con indicador de progreso. El texto se **añade al final**, así que se pueden pegar varias capturas de una oferta larga. |
+| **Texto** (p. ej. Ctrl+A y Ctrl+C en la web de la oferta) | Se limpian tabulaciones, espacios repetidos, caracteres invisibles y líneas en blanco múltiples, y se limita a 10.000 caracteres (aviso si se recorta). Si el texto ya está limpio, se deja actuar al navegador para conservar su "deshacer". |
+
+- **Texto e imagen a la vez** (Word y Excel copian ambos): manda el texto, no se ejecuta el OCR.
+- **Ruido de la web:** menús, cookies, ofertas similares y pies de página los ignora el LLM por la regla 8 del prompt v4. El frontend no intenta adivinar qué es ruido.
+- **Límite de 10.000 caracteres** para lo pegado o importado. Protege el límite de tokens por minuto de Groq. Lo escrito a mano sigue admitiendo hasta 15.000, el límite del backend.
+- **Privacidad:**
+  - Las capturas nunca salen del navegador y el OCR no gasta tokens.
+  - tesseract.js se carga con `import()` en un fragmento aparte, de 17 KB.
+  - El motor WASM y los modelos de idioma se descargan de `cdn.jsdelivr.net` la primera vez, y el navegador los cachea.
+  - La CSP de `vercel.json` permite exactamente eso: `script-src` y `connect-src` con `cdn.jsdelivr.net`, `'wasm-unsafe-eval'` y `worker-src blob:`.
+- **Mientras se lee un enlace o una captura:** el `textarea` queda en solo lectura, se ignoran nuevos pegados y el botón de optimizar se desactiva.
+
+### 9.9 Dependencias principales (frontend)
 
 | Paquete | Uso |
 |---|---|
@@ -1153,6 +1195,7 @@ stateDiagram-v2
 | `react-dropzone` | Subida del PDF |
 | `react-markdown`, `remark-gfm`, `rehype-sanitize` | Render seguro |
 | `react-hot-toast` | Notificaciones (habilidad añadida, error de la API) |
+| `tesseract.js` | OCR de capturas de la oferta en el navegador (carga diferida) |
 | `i18next`, `react-i18next` | i18n |
 | Dev: `vite`, `typescript`, `vitest`, `@testing-library/react`, `msw`, `eslint`, `prettier` | Calidad |
 
@@ -1365,6 +1408,27 @@ docker compose up --build
   - (+) Compatibilidad hacia atrás.
   - (+) Deshacer es trivial.
   - (−) Las sugerencias dependen de la calidad de `job_keywords`; si el LLM no extrae un requisito, no se sugiere.
+
+### ADR-009: Ofertas por URL con Jina Reader y capturas con OCR en el cliente
+
+- **Contexto:**
+  - Copiar una oferta a mano es la fricción principal del formulario.
+  - Los portales grandes (LinkedIn, InfoJobs) bloquean la lectura automática con muros de login, de cookies o antibots.
+  - Descargar páginas desde el backend con una URL arbitraria abre la puerta a SSRF y obliga a renderizar JavaScript.
+- **Decisión:**
+  - **Enlaces:**
+    - Leerlos con Jina Reader, que renderiza la página fuera de nuestra infraestructura.
+    - Validar que la URL sea pública antes de enviarla.
+    - Comprobar por contenido que el resultado parece una oferta, porque Jina responde 200 también con muros.
+    - Si no lo parece, guiar al usuario hacia Ctrl+A o una captura.
+  - **Capturas:** OCR con tesseract.js en el navegador.
+- **Consecuencias:**
+  - (+) Sin SSRF.
+  - (+) Las capturas no salen del navegador.
+  - (+) Ni el OCR ni la lectura de enlaces gastan tokens del LLM.
+  - (−) Dependencia de un servicio externo gratuito con límite por IP (configurable con `JINA_API_KEY`).
+  - (−) La detección de muros es heurística.
+  - (−) La primera captura descarga unos pocos MB (motor y modelos de idioma) desde jsDelivr.
 
 ---
 

@@ -17,11 +17,11 @@ export function AtsSuggestions({ suggestions, added, onAdd, onRemove, disabled =
     <div className="card p-5">
       <h3 className="flex items-center gap-1.5 text-sm font-semibold">
         <Sparkles className="size-4 text-sky-500" aria-hidden />
-        Sugerencias ATS
+        Habilidades de la oferta que puedes añadir (si las dominas)
       </h3>
       <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-        Requisitos de la oferta que no están en tu CV. Añade solo lo que realmente dominas: el reclutador puede
-        preguntarte por ello.
+        La oferta las pide y no están en tu CV. Añade solo lo que realmente dominas: el reclutador puede preguntarte
+        por ello.
       </p>
 
       {suggestions.length > 0 && (

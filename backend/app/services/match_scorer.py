@@ -110,7 +110,7 @@ def dropped_keywords(keywords: list[str], original_cv: str, optimized_cv: str) -
 
 
 def ats_suggestions(
-    match: MatchReport, original_cv: str, optimized_cv: str, limit: int = 5
+    match: MatchReport, original_cv: str, optimized_cv: str, limit: int = 6
 ) -> list[str]:
     """Requisitos verificables de la oferta que faltan y que el candidato no tenía en su CV
     original. Nunca rasgos personales: `missing_keywords` ya los excluye."""

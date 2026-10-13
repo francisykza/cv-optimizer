@@ -27,6 +27,7 @@ export default function App() {
   const [jobOffer, setJobOffer] = useState('')
   const [language, setLanguage] = useState<OutputLanguage>('auto')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [offerBusy, setOfferBusy] = useState(false)
 
   const settingsRef = useRef<HTMLDivElement>(null)
   const resultsRef = useRef<HTMLElement>(null)
@@ -46,7 +47,9 @@ export default function App() {
       ? `Pega la oferta completa (mínimo ${JOB_OFFER_MIN_CHARS} caracteres).`
       : offerLength > JOB_OFFER_MAX_CHARS
         ? 'La oferta es demasiado larga.'
-        : server.serverKeyAvailable === false && !hasKey
+        : offerBusy
+          ? 'Espera a que terminemos de leer la oferta.'
+          : server.serverKeyAvailable === false && !hasKey
           ? 'Introduce tu API key de Groq para continuar.'
           : server.state === 'waking'
             ? 'Esperando a que el servidor despierte…'
@@ -117,6 +120,7 @@ export default function App() {
               language={language}
               onLanguageChange={setLanguage}
               disabled={loading}
+              onBusyChange={setOfferBusy}
             />
           </div>
 

@@ -94,3 +94,19 @@ export function optimizeCv({ file, jobOffer, language, apiKey, signal }: Optimiz
     timeoutMs: OPTIMIZE_TIMEOUT_MS,
   })
 }
+
+/** Margen para el arranque en frío de Render; Jina tiene a su vez 8 s en el backend. */
+const JOB_URL_TIMEOUT_MS = 30_000
+
+/** Texto de una oferta a partir de su enlace. Si el portal lo bloquea, el backend responde 422
+ *  `JOB_URL_UNREADABLE` con instrucciones para copiar el texto o pegar una captura. */
+export async function extractJobUrl(url: string, signal?: AbortSignal): Promise<string> {
+  const body = await request<{ text: string }>('/api/v1/extract-job-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+    signal,
+    timeoutMs: JOB_URL_TIMEOUT_MS,
+  })
+  return body.text
+}

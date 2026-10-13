@@ -197,7 +197,7 @@ ${claim}.`,
 
   it('no muestra el panel de sugerencias si no hay ninguna', () => {
     render(<ResultViewer result={RESULT} onReset={() => {}} />)
-    expect(screen.queryByText('Sugerencias ATS')).toBeNull()
+    expect(screen.queryByText(/Habilidades de la oferta que puedes añadir/)).toBeNull()
   })
 
   it('ofrece la descarga en Word, PDF y Markdown', async () => {

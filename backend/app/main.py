@@ -9,7 +9,7 @@ from starlette.formparsers import MultiPartParser
 
 from app import __version__
 from app.api.errors import register_exception_handlers
-from app.api.routes import health, keys, optimize
+from app.api.routes import health, job_offer, keys, optimize
 from app.core.config import Settings, get_settings
 from app.core.logging import setup_logging
 from app.core.middleware import BodySizeLimitMiddleware, RequestContextMiddleware
@@ -50,11 +50,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         [(settings.rate_limit_per_minute, 60), (settings.rate_limit_per_day, 86_400)]
     )
     app.state.key_limiter = SlidingWindowRateLimiter([(settings.key_validation_per_minute, 60)])
+    app.state.job_url_limiter = SlidingWindowRateLimiter([(settings.job_url_per_minute, 60)])
 
     register_exception_handlers(app)
     app.include_router(health.router)
     app.include_router(optimize.router, prefix="/api/v1")
     app.include_router(keys.router, prefix="/api/v1")
+    app.include_router(job_offer.router, prefix="/api/v1")
 
     # El último middleware añadido es el más externo: CORS -> RequestContext -> BodySizeLimit -> app.
     # CORS va por fuera para que TODAS las respuestas (incluidos 413 y 500) lleven sus cabeceras.

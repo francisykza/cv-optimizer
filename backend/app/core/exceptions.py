@@ -50,6 +50,21 @@ class InvalidJobOfferError(AppError):
     code = "INVALID_JOB_OFFER"
 
 
+class InvalidJobUrlError(AppError):
+    status_code = 422
+    code = "INVALID_JOB_URL"
+    message = "El enlace no es una URL pública válida (debe empezar por http:// o https://)."
+
+
+class JobUrlUnreadableError(AppError):
+    status_code = 422
+    code = "JOB_URL_UNREADABLE"
+    message = (
+        "Este portal bloquea enlaces directos. Entra en la oferta, pulsa Ctrl+A para copiar todo "
+        "o pega aquí una captura de pantalla con Ctrl+V."
+    )
+
+
 class InvalidProviderError(AppError):
     status_code = 422
     code = "INVALID_PROVIDER"

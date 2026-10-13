@@ -27,6 +27,8 @@ services:
         sync: false # p. ej. https://cv-optimizer.vercel.app
       - key: ALLOWED_ORIGIN_REGEX
         sync: false # opcional, previews de Vercel: https://cv-optimizer-.*\.vercel\.app
+      - key: JINA_API_KEY
+        sync: false # opcional: sin clave, Jina Reader limita por IP
       - key: GROQ_MODEL_PRIMARY
         value: openai/gpt-oss-120b
       - key: GROQ_MODEL_FALLBACK

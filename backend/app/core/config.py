@@ -54,12 +54,18 @@ class Settings(BaseSettings):
     job_offer_min_chars: int = 200
     job_offer_max_chars: int = 15_000
 
+    # --- Ofertas desde URL (Jina Reader) ---
+    # Sin clave, Jina limita por IP (unas 20 peticiones/minuto); con clave el límite es mayor.
+    jina_api_key: SecretStr | None = None
+    job_url_timeout_s: float = 8.0
+    job_url_per_minute: int = 10
+
     # --- Rate limiting (solo modo servidor) ---
     rate_limit_per_minute: int = 5
     rate_limit_per_day: int = 30
     key_validation_per_minute: int = 10
 
-    @field_validator("groq_api_key", mode="before")
+    @field_validator("groq_api_key", "jina_api_key", mode="before")
     @classmethod
     def _strip_api_key(cls, value: object) -> object:
         # Los paneles de los proveedores cloud (p. ej. el textarea de Render) cuelan a menudo

@@ -10,7 +10,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Python](https://img.shields.io/badge/Python_3.12-3776AB?logo=python&logoColor=white)
 ![Groq](https://img.shields.io/badge/LLM-Groq-F55036)
-![Tests](https://img.shields.io/badge/tests-141_passing-22C55E)
+![Tests](https://img.shields.io/badge/tests-174_passing-22C55E)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/hero-dark.jpg" alt="Página de inicio de CV-Optimizer" width="800" />
@@ -46,13 +46,14 @@
    - La **compatibilidad antes y después** con la oferta.
    - Las palabras clave cubiertas y las que faltan.
    - Los **gaps**: lo que pide la oferta y tú no acreditas. Se te informa, pero la IA nunca lo añade al CV.
-   - Hasta 5 **sugerencias ATS**: requisitos de la oferta que no están en tu CV. Si los dominas, los añades tú con un clic.
+   - Hasta 6 **sugerencias ATS**: requisitos de la oferta que no están en tu CV. Si los dominas, los añades tú con un clic.
 
 | Funcionalidad | Detalle |
 |---|---|
 | Modo gratuito | Usa la clave de Groq del servidor, con un límite por IP. |
 | **BYOK** (*Bring Your Own Key*) | Introduces tu propia API key de Groq: sin límites, y la clave nunca se guarda. |
 | Exportación para ATS | **DOCX** (recomendado: lo leen todos los ATS, con estilos de título y viñetas nativas de Word) y **PDF** con texto seleccionable, nunca una imagen. Se generan en el navegador, así que el CV no vuelve a subirse. |
+| Oferta en un solo campo | Pega el **texto** (Ctrl+A en la web de la oferta: se limpia solo), el **enlace** (se lee con Jina Reader; si el portal lo bloquea, te dice cómo seguir) o **capturas de pantalla** (OCR en tu navegador: la imagen no se sube a ningún servidor). |
 | Sugerencias ATS | Chips con los requisitos verificables que te faltan (nunca rasgos personales). Al pulsarlos se añaden a la sección de habilidades, resaltados en azul como "Añadido por ti", y la puntuación se recalcula. Se pueden quitar. La decisión es tuya, no de la IA. |
 | Arranque en frío | El frontend "despierta" el backend de Render al cargar la página y avisa si tarda. |
 | Accesibilidad | Navegación por teclado, `aria-live` en los estados de carga y modo oscuro automático. |
@@ -204,8 +205,8 @@ La lista completa está en [`backend/.env.example`](backend/.env.example) y [`co
 ## Tests y calidad
 
 ```bash
-cd backend && pytest -q && ruff check app tests     # 103 tests
-cd frontend && npm test && npm run build             # 38 tests + typecheck + build
+cd backend && pytest -q && ruff check app tests     # 124 tests
+cd frontend && npm test && npm run build             # 50 tests + typecheck + build
 ```
 
 Qué cubren:

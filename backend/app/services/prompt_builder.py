@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-PROMPT_VERSION = "v3"
+PROMPT_VERSION = "v4"
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 OutputLanguage = Literal["auto", "es", "en"]
