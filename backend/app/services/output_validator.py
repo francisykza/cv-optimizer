@@ -15,43 +15,20 @@ Comprobaciones:
 """
 
 import re
-import unicodedata
 from dataclasses import dataclass, field
 
 from app.schemas.optimize import ValidationWarning
+from app.services.text_utils import STOPWORDS as _STOPWORDS
+from app.services.text_utils import SYNONYMS as _SYNONYMS
+from app.services.text_utils import clean_markdown as _clean_markdown
+from app.services.text_utils import fold
+from app.services.text_utils import stem as _stem
+from app.services.text_utils import tokens as _tokens
 
 UNGROUNDED_CODES = frozenset(
     {"UNGROUNDED_DATE", "UNGROUNDED_METRIC", "UNGROUNDED_ENTITY", "UNGROUNDED_SKILL", "GAP_LEAKED"}
 )
 
-# Equivalencias veraces permitidas (SDD regla 5). Bidireccionales.
-_SYNONYM_GROUPS = [
-    {"javascript", "js"},
-    {"typescript", "ts"},
-    {"kubernetes", "k8s"},
-    {"postgresql", "postgres"},
-    {"python", "py"},
-    {"amazon web services", "aws"},
-    {"google cloud platform", "gcp", "google cloud"},
-    {"machine learning", "ml", "aprendizaje automatico"},
-    {"inteligencia artificial", "ia", "ai", "artificial intelligence"},
-    {"ci/cd", "integracion continua", "continuous integration"},
-    {"node.js", "nodejs", "node"},
-    {"react", "react.js", "reactjs"},
-    {"vue", "vue.js", "vuejs"},
-    {"ingles", "english"},
-    {"espanol", "castellano", "spanish"},
-    {"sql server", "mssql"},
-]
-_SYNONYMS: dict[str, set[str]] = {}
-for _group in _SYNONYM_GROUPS:
-    for _term in _group:
-        _SYNONYMS.setdefault(_term, set()).update(_group - {_term})
-
-_STOPWORDS = frozenset(
-    "de del la las el los y e o u en con para por a al un una sus su lo que como "
-    "the and or of in at for with to a an on by as from".split()
-)
 _ES_HINTS = frozenset("de la el los las y en con para del que experiencia desarrollo".split())
 _EN_HINTS = frozenset("the and with for of in to experience development skills".split())
 
@@ -62,12 +39,9 @@ _NUMBER = re.compile(r"(?<![\w.,])(\d+(?:[.,]\d+)*)(?!\d)")
 _LIST_MARKER = re.compile(r"^\s*(?:\d+[.)]|[-*+])\s+", re.MULTILINE)
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _URL = re.compile(r"(?:https?://|www\.)[^\s)>\]]+|\b(?:linkedin\.com|github\.com)/[^\s)>\]]+", re.I)
-_MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
-_MD_NOISE = re.compile(r"[*_`#>]+")
 _HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
 # No se separa por " en ": forma parte de muchos títulos ("Máster en Inteligencia Artificial").
 _ENTITY_SEPARATORS = re.compile(r"\s+[—–\-|·@]\s+|\s*,\s+|\s+at\s+(?=[A-Z])")
-_MD_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _SKILL_SEPARATORS = re.compile(r"\s*(?:,|;|·|\||/|\s+y\s+|\s+and\s+)\s*")
 _SKILL_LABEL = re.compile(r"^[^:]{1,40}:\s*")
 _PARENS = re.compile(r"\([^)]*\)")
@@ -79,27 +53,6 @@ _SKILLS = re.compile(
 )
 
 
-def fold(text: str) -> str:
-    """Minúsculas, sin tildes y con espacios normalizados (para comparar textos)."""
-    text = unicodedata.normalize("NFKD", text)
-    text = "".join(c for c in text if not unicodedata.combining(c))
-    text = text.replace("–", "-").replace("—", "-")
-    return re.sub(r"\s+", " ", text.lower()).strip()
-
-
-def _tokens(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9+#]+", fold(text))
-
-
-def _stem(token: str) -> str:
-    # Plural muy simple (apis -> api, servicios -> servicio, bases -> base).
-    if len(token) > 4 and token.endswith("es") and not token.endswith("ies"):
-        return token[:-1] if token[-3] in "aeiou" else token[:-2]
-    if len(token) > 3 and token.endswith("s"):
-        return token[:-1]
-    return token
-
-
 def _canonical_number(raw: str) -> str:
     if re.fullmatch(r"\d{1,3}(?:[.,]\d{3})+", raw):  # separadores de miles: 1.000 / 1,000
         return raw.replace(".", "").replace(",", "")
@@ -107,11 +60,6 @@ def _canonical_number(raw: str) -> str:
     if "." in value:
         value = value.rstrip("0").rstrip(".")
     return value.lstrip("0") or "0"
-
-
-def _clean_markdown(text: str) -> str:
-    text = _MD_LINK.sub(r"\1", _MD_IMAGE.sub(" ", text))
-    return _MD_NOISE.sub("", text).strip()
 
 
 def detect_language(text: str) -> str | None:

@@ -152,6 +152,20 @@ def test_invented_data_triggers_one_correction(client, groq_mock):
         assert f"- {item}" in correction[-1]["content"]
 
 
+def test_response_includes_rewordings_but_not_amber_terms(client, groq_mock):
+    markdown = INVENTED_MARKDOWN.replace("- APIs REST con FastAPI.", "- Diseñé APIs REST con FastAPI.")
+    groq_mock.post("/chat/completions").mock(
+        return_value=groq_completion(llm_payload(optimized_markdown=markdown))
+    )
+
+    body = post_optimize(client).json()
+
+    assert "Diseñé" in body["changes"]
+    amber = {w["term"] for w in body["warnings"]}
+    assert "Kubernetes" in amber
+    assert not any("Kubernetes" in change for change in body["changes"])
+
+
 def test_persistent_hallucinations_are_flagged_for_review(client, groq_mock):
     groq_mock.post("/chat/completions").mock(
         return_value=groq_completion(llm_payload(optimized_markdown=INVENTED_MARKDOWN))

@@ -18,6 +18,7 @@ from app.schemas.optimize import (
     TokenUsageOut,
 )
 from app.services import match_scorer
+from app.services.change_detector import detect_changes
 from app.services.llm.base import ChatMessage, LLMProvider, LLMRequest, LLMResponse, Mode
 from app.services.output_validator import OutputValidator, ValidationReport
 from app.services.pdf_extractor import PdfExtractor
@@ -97,6 +98,12 @@ class OptimizerService:
             keywords, extracted.text, output.optimized_markdown, exclude=report.leaked_keywords
         )
         quality = "needs_review" if report.ungrounded_count else "ok"
+        # Lo marcado en ámbar por el validador no es una reformulación: se excluye del verde.
+        changes = detect_changes(
+            output.optimized_markdown,
+            extracted.text,
+            exclude=[w.term for w in report.ungrounded if w.term],
+        )
         latency_ms = int((time.perf_counter() - start) * 1000)
         tokens = TokenUsageOut(
             input=sum(r.usage.input for r in responses),
@@ -120,6 +127,7 @@ class OptimizerService:
             gaps=output.gaps,
             changes_summary=output.changes_summary,
             warnings=report.warnings,
+            changes=changes,
             quality=quality,
             meta=OptimizeMeta(
                 mode=mode,
