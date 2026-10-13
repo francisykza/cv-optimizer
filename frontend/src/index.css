@@ -30,7 +30,9 @@
 
 @layer base {
   html {
-    @apply scroll-smooth antialiased;
+    /* Sin scroll-behavior: smooth global: interfiere con la rueda y el panel táctil.
+       Los desplazamientos programáticos ya pasan behavior: 'smooth' explícitamente. */
+    @apply antialiased;
     color-scheme: light dark;
   }
 
@@ -44,9 +46,29 @@
 }
 
 @layer components {
+  /* Fondo opaco y sin backdrop-filter: con 8-10 tarjetas en pantalla, el desenfoque de fondo
+     obligaba a recomponer cada una en cada fotograma del scroll (causa de los tirones). */
   .card {
-    @apply rounded-2xl border border-slate-200/80 bg-white/90 shadow-sm shadow-slate-900/5 backdrop-blur
-      dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-black/20;
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-900/5
+      dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20;
+  }
+
+  /* Halo de la portada: el mismo resplandor que antes daba filter: blur(64px), pero con
+     gradientes radiales, que el navegador pinta una vez y no recalcula al hacer scroll. */
+  .hero-glow {
+    background:
+      radial-gradient(closest-side at 35% 55%, rgb(129 140 248 / 0.28), transparent),
+      radial-gradient(closest-side at 55% 50%, rgb(167 139 250 / 0.24), transparent),
+      radial-gradient(closest-side at 72% 45%, rgb(125 211 252 / 0.18), transparent);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .hero-glow {
+      background:
+        radial-gradient(closest-side at 35% 55%, rgb(79 70 229 / 0.24), transparent),
+        radial-gradient(closest-side at 55% 50%, rgb(124 58 237 / 0.2), transparent),
+        radial-gradient(closest-side at 72% 45%, rgb(14 165 233 / 0.1), transparent);
+    }
   }
 
   .focus-ring {

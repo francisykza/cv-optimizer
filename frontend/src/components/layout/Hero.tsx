@@ -20,15 +20,17 @@ const FEATURES = [
 
 export function Hero() {
   return (
-    <section className="relative isolate overflow-hidden">
-      {/* Fondo: rejilla sutil + halo de color */}
+    <section className="relative isolate overflow-hidden [contain:paint]">
+      {/* Fondo: rejilla sutil + halo de color. Ambos son estáticos y van en su propia capa
+          (transform-gpu) para que el scroll no los repinte. El halo usa un radial-gradient en
+          lugar de filter: blur(), que era muy costoso sobre un elemento de 56rem. */}
       <div
         aria-hidden
-        className="absolute inset-0 -z-10 bg-[linear-gradient(to_right,rgb(148_163_184/0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgb(148_163_184/0.12)_1px,transparent_1px)] bg-[size:44px_44px] [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,#000_60%,transparent_100%)]"
+        className="absolute inset-0 -z-10 transform-gpu bg-[linear-gradient(to_right,rgb(148_163_184/0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgb(148_163_184/0.12)_1px,transparent_1px)] bg-[size:44px_44px] [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,#000_60%,transparent_100%)]"
       />
       <div
         aria-hidden
-        className="absolute left-1/2 top-[-12rem] -z-10 h-[28rem] w-[56rem] -translate-x-1/2 rounded-full bg-gradient-to-tr from-indigo-400/30 via-violet-400/25 to-sky-300/20 blur-3xl dark:from-indigo-600/25 dark:via-violet-600/20 dark:to-sky-500/10"
+        className="hero-glow absolute left-1/2 top-[-16rem] -z-10 h-[36rem] w-[64rem] -translate-x-1/2 transform-gpu"
       />
 
       <div className="mx-auto max-w-6xl px-4 pb-12 pt-14 text-center sm:px-6 sm:pt-20">

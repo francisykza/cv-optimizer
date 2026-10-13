@@ -15,7 +15,9 @@ export function Header({ serverState }: { serverState: ServerState }) {
   const status = STATUS[serverState]
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/75 backdrop-blur-lg dark:border-slate-800/70 dark:bg-slate-950/75">
+    // Fondo casi opaco y sin backdrop-blur: desenfocar todo lo que pasa por debajo de una
+    // cabecera fija cuesta un repintado completo por fotograma. translate-z-0 la sube a su capa.
+    <header className="sticky top-0 z-30 transform-gpu border-b border-slate-200/70 bg-white/95 dark:border-slate-800/70 dark:bg-slate-950/95">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <a href="#" className="focus-ring flex items-center gap-2.5 rounded-lg" aria-label="CV-Optimizer, inicio">
           <Logo className="size-8" />
