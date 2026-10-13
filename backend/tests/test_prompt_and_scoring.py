@@ -92,3 +92,27 @@ def test_soft_skills_do_not_affect_the_score():
     report = score(["contabilidad"], "contabilidad", "contabilidad", soft_skills=["proactiva", "dinámica"])
     assert report.score_after == 100
     assert report.soft_skills == ["proactiva", "dinámica"]
+
+
+def test_soft_skills_left_among_keywords_by_the_llm_are_moved_apart():
+    """Regresión: en producción gpt-oss-120b devolvió soft_skills vacío y dejó los rasgos
+    personales entre las keywords, que seguían restando puntuación."""
+    from app.services.match_scorer import clean_soft_skills, split_soft_skills
+
+    offer = ADMIN_OFFER + " Valoramos el trabajo en equipo. Responsable de facturación."
+    llm_keywords = ["contabilidad", "Contanet", "proactiva", "dinámica", "organizada",
+                    "trabajo en equipo", "Responsable de facturación"]
+    hard, soft = split_soft_skills(llm_keywords, [])
+    keywords = clean_keywords(hard, offer)
+    assert keywords == ["contabilidad", "Contanet", "Responsable de facturación"]
+    expected_soft = ["proactiva", "dinámica", "organizada", "trabajo en equipo"]
+    assert clean_soft_skills(soft, offer, keywords) == expected_soft
+
+
+def test_soft_skill_detection():
+    from app.services.match_scorer import is_soft_skill
+
+    for soft in ("proactivo", "Organizadas", "orientación a resultados", "Trabajo en equipo", "leadership"):
+        assert is_soft_skill(soft), soft
+    for hard in ("contabilidad", "Excel medio", "Responsable de facturación", "Carnet de conducir", "Python"):
+        assert not is_soft_skill(hard), hard

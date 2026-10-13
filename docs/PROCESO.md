@@ -98,14 +98,14 @@ Las pruebas con usuarios y servicios reales sacaron a la luz problemas que los t
 | El validador aceptó "más de **2** años de experiencia" | El "2" de "inglés **B2**" contaba como cifra respaldada | El CV original se analiza con la misma regla que el generado: solo cifras sueltas |
 | "Servidor no disponible" en la primera visita del día | Mientras Render despierta el servicio responde sin cabeceras CORS, y el frontend lo trataba como una caída | Reintentos con estado "despertando" durante 2 minutos y botón bloqueado mientras tanto |
 | El resumen incluía "orientada a la mejora continua y al trabajo autónomo" | El LLM rellenaba el resumen con cualidades que el validador no comprobaba | Nuevo aviso de afirmaciones sin respaldo y regla explícita en el prompt v2 |
-| La compatibilidad **bajó** de 17 % a 11 % tras optimizar (prueba desde el móvil con una oferta de administración) | El LLM quitó del CV un término de la oferta que ya estaba. Además, la lista contaba palabras genéricas ("experiencia") y rasgos de personalidad que nunca se añadirán | Corrección automática que recupera las keywords perdidas, filtro de genéricas y rasgos personales mostrados aparte, sin puntuar |
+| La compatibilidad **bajó** de 17 % a 11 % tras optimizar (prueba desde el móvil con una oferta de administración) | El LLM quitó del CV un término de la oferta que ya estaba. Además, la lista contaba palabras genéricas ("experiencia") y rasgos de personalidad que nunca se añadirán | Corrección automática que recupera las keywords perdidas, filtro de genéricas y rasgos personales mostrados aparte, sin puntuar. En producción el modelo no separaba los rasgos aunque el prompt lo pedía, así que se añadió un clasificador determinista (léxico de competencias personales) |
 | Tirones al hacer scroll | Desenfoques de fondo (`backdrop-filter`) en 7 tarjetas y en la cabecera fija, y un `filter: blur()` sobre el halo de la portada | Fondos opacos y degradados. Medido: de 8 elementos con filtro a 0 |
 
 ## 6. Cómo se verificó cada cambio
 
 El criterio fue no dar nada por terminado sin una prueba que lo demostrara:
 
-- **Tests automáticos:** 127 en total (98 en el backend con pytest y 29 en el frontend con Vitest), ejecutados en cada push por la CI.
+- **Tests automáticos:** 129 en total (100 en el backend con pytest y 29 en el frontend con Vitest), ejecutados en cada push por la CI.
 - **Controles negativos:** los tests críticos se comprobaron haciéndolos fallar a propósito. Por ejemplo, el test que garantiza que el PDF nunca se escribe en disco falla si se quita la corrección.
 - **Flujo completo con un LLM simulado:** un servidor local que imita a Groq devolviendo CVs con datos inventados. Así se probó la corrección automática y el resaltado sin gastar cuota.
 - **Seguridad del navegador:** el build de producción se sirvió localmente con la misma Content-Security-Policy que Vercel, para confirmar que la app y las exportaciones no la violan.
@@ -138,7 +138,7 @@ El proyecto aplica a su propio dominio los principios que exige el uso de IA gen
 | Duración | 2 días (12 y 13 de octubre de 2026) |
 | Especificación | `SDD.md`: ~1.360 líneas, versión 1.2.2, 7 ADRs |
 | Código | ~4.700 líneas de código de aplicación y ~1.300 de tests, en Python y TypeScript |
-| Tests | 127 (98 en el backend y 29 en el frontend) |
+| Tests | 129 (100 en el backend y 29 en el frontend) |
 | Fallos de producción resueltos | 7, cada uno con su test de regresión |
 | Coste de infraestructura | 0 €: planes gratuitos de Groq, Render y Vercel |
 

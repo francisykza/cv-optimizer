@@ -21,6 +21,51 @@ _GENERIC_WORDS = frozenset(
 )
 
 
+# Rasgos personales: el LLM no siempre los separa en `soft_skills` (visto en producción con
+# gpt-oss-120b), así que se reclasifican de forma determinista. Prefijos sobre texto normalizado
+# (sin tildes) para cubrir género y número: "proactiv" -> proactivo/a/os/as.
+_SOFT_PREFIXES = (
+    "proactiv", "dinamic", "organizad", "resolutiv", "responsab", "comunicativ", "colabora", "lider",
+    "empati", "creativ", "flexib", "adaptab", "iniciativa", "autonom", "polivalen", "motivad", "puntual",
+    "orientad", "orientacion", "comprometid", "compromiso", "actitud", "metodic", "meticulos",
+    "detallista", "perseveran", "constan", "entusias", "amable", "extrovert", "sociable", "asertiv",
+    "proactive", "dynamic", "organized", "organised", "motivated", "teamwork", "leadership",
+    "communicat", "reliable", "detail-oriented", "self-starter", "enthusias",
+)
+_SOFT_PHRASES = frozenset(
+    fold(p)
+    for p in (
+        "trabajo en equipo", "capacidad de trabajo en equipo", "resolución de problemas",
+        "atención al detalle", "gestión del tiempo", "pensamiento crítico", "inteligencia emocional",
+        "don de gentes", "capacidad de aprendizaje", "ganas de aprender", "buena presencia",
+        "habilidades comunicativas", "habilidades sociales", "team player", "problem solving",
+        "time management", "critical thinking", "attention to detail", "soft skills",
+    )
+)
+
+
+def is_soft_skill(keyword: str) -> bool:
+    """¿Es un rasgo personal ("proactiva", "trabajo en equipo") y no un requisito verificable?
+    "Responsable de facturación" no lo es: tiene contenido que no es un rasgo."""
+    folded = fold(keyword)
+    if folded in _SOFT_PHRASES:
+        return True
+    words = [t for t in tokens(keyword) if t not in STOPWORDS]
+    if not words:
+        return False
+    # "Orientación a resultados", "orientada al cliente": actitudes, sea cual sea el objeto.
+    if words[0].startswith("orient"):
+        return True
+    return all(t.startswith(_SOFT_PREFIXES) for t in words)
+
+
+def split_soft_skills(keywords: list[str], soft_skills: list[str]) -> tuple[list[str], list[str]]:
+    """Separa los rasgos personales que el LLM haya dejado entre las keywords."""
+    hard = [k for k in keywords if not is_soft_skill(k)]
+    soft = list(soft_skills) + [k for k in keywords if is_soft_skill(k)]
+    return hard, soft
+
+
 def contains(text: str, keyword: str) -> bool:
     pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
     return re.search(pattern, text, flags=re.IGNORECASE) is not None
@@ -31,7 +76,9 @@ def _is_generic(keyword: str) -> bool:
     return all(t.isdigit() or t in _GENERIC_WORDS for t in words)
 
 
-def clean_keywords(keywords: list[str], job_offer: str, limit: int = 30) -> list[str]:
+def clean_keywords(
+    keywords: list[str], job_offer: str, limit: int = 30, drop_generic: bool = True
+) -> list[str]:
     """Deduplica y descarta keywords que no aparecen literalmente en la oferta o que son
     genéricas (solo "experiencia", "años", cifras...)."""
     seen: set[str] = set()
@@ -39,7 +86,9 @@ def clean_keywords(keywords: list[str], job_offer: str, limit: int = 30) -> list
     for kw in keywords:
         kw = kw.strip()
         key = fold(kw)
-        if not kw or len(kw) > 60 or key in seen or _is_generic(kw) or not contains(job_offer, kw):
+        if not kw or len(kw) > 60 or key in seen or not contains(job_offer, kw):
+            continue
+        if drop_generic and _is_generic(kw):
             continue
         seen.add(key)
         result.append(kw)
@@ -51,7 +100,8 @@ def clean_soft_skills(
 ) -> list[str]:
     """Rasgos personales que pide la oferta. Solo los que aparecen en ella y no son ya keywords."""
     taken = {fold(k) for k in keywords}
-    return [s for s in clean_keywords(soft_skills, job_offer, limit=limit) if fold(s) not in taken]
+    cleaned = clean_keywords(soft_skills, job_offer, limit=limit, drop_generic=False)
+    return [s for s in cleaned if fold(s) not in taken]
 
 
 def dropped_keywords(keywords: list[str], original_cv: str, optimized_cv: str) -> list[str]:

@@ -77,8 +77,9 @@ class OptimizerService:
 
         # Las keywords se fijan con la primera extracción: la oferta no cambia entre llamadas y así
         # la puntuación de antes y después se mide siempre sobre la misma lista.
-        keywords = match_scorer.clean_keywords(output.job_keywords, job_offer)
-        soft_skills = match_scorer.clean_soft_skills(output.soft_skills, job_offer, keywords)
+        hard, soft = match_scorer.split_soft_skills(output.job_keywords, output.soft_skills)
+        keywords = match_scorer.clean_keywords(hard, job_offer)
+        soft_skills = match_scorer.clean_soft_skills(soft, job_offer, keywords)
 
         # Capa 4 del SDD: validación determinista + una corrección si hay datos no respaldados o
         # si la optimización ha quitado términos de la oferta que el candidato ya tenía.
