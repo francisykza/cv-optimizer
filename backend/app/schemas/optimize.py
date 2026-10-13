@@ -34,6 +34,7 @@ class ValidationWarning(BaseModel):
         "UNGROUNDED_METRIC",
         "UNGROUNDED_ENTITY",
         "UNGROUNDED_SKILL",
+        "UNGROUNDED_CLAIM",
         "GAP_LEAKED",
         "FORMAT",
         "LIMITED_CHECK",

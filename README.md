@@ -10,7 +10,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Python](https://img.shields.io/badge/Python_3.12-3776AB?logo=python&logoColor=white)
 ![Groq](https://img.shields.io/badge/LLM-Groq-F55036)
-![Tests](https://img.shields.io/badge/tests-111_passing-22C55E)
+![Tests](https://img.shields.io/badge/tests-118_passing-22C55E)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/hero-dark.jpg" alt="Página de inicio de CV-Optimizer" width="800" />
@@ -74,6 +74,7 @@ El **validador** ([`output_validator.py`](backend/app/services/output_validator.
 | `UNGROUNDED_METRIC` | "reduje la latencia un **45%**" cuando el original dice 30% |
 | `UNGROUNDED_ENTITY` | Empresas, títulos, puestos ("Tech Lead"), emails o URLs que no estaban |
 | `UNGROUNDED_SKILL` | Habilidades añadidas ("Rust") o niveles inflados ("Inglés nativo" en lugar de B2) |
+| `UNGROUNDED_CLAIM` | Afirmaciones del resumen sin apoyo en el CV ("orientada a la mejora continua y al trabajo autónomo") |
 | `GAP_LEAKED` | Un requisito de la oferta ("Kubernetes") colado en el CV sin estar en el original |
 
 Si encuentra algo:
@@ -199,8 +200,8 @@ La lista completa está en [`backend/.env.example`](backend/.env.example) y [`co
 ## Tests y calidad
 
 ```bash
-cd backend && pytest -q && ruff check app tests     # 84 tests
-cd frontend && npm test && npm run build             # 27 tests + typecheck + build
+cd backend && pytest -q && ruff check app tests     # 90 tests
+cd frontend && npm test && npm run build             # 28 tests + typecheck + build
 ```
 
 Qué cubren:

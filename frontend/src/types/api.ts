@@ -24,6 +24,7 @@ export type WarningCode =
   | 'UNGROUNDED_METRIC'
   | 'UNGROUNDED_ENTITY'
   | 'UNGROUNDED_SKILL'
+  | 'UNGROUNDED_CLAIM'
   | 'GAP_LEAKED'
   | 'FORMAT'
   | 'LIMITED_CHECK'
@@ -54,6 +55,7 @@ export const UNGROUNDED_CODES: ReadonlySet<WarningCode> = new Set([
   'UNGROUNDED_METRIC',
   'UNGROUNDED_ENTITY',
   'UNGROUNDED_SKILL',
+  'UNGROUNDED_CLAIM',
   'GAP_LEAKED',
 ])
 

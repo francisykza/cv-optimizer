@@ -9,6 +9,7 @@ Comprobaciones:
 - UNGROUNDED_METRIC  cifras y porcentajes que no aparecen en el CV original.
 - UNGROUNDED_ENTITY  empresas, centros, puestos, nombre, emails y URLs no respaldados.
 - UNGROUNDED_SKILL   habilidades listadas que no están en el CV original.
+- UNGROUNDED_CLAIM   afirmaciones del resumen sin apoyo en el CV ("orientada a resultados").
 - GAP_LEAKED         keywords de la oferta que el CV original no tenía y el optimizado sí.
 - FORMAT             tablas, imágenes, HTML o longitud anómala (no cuenta como alucinación).
 - LIMITED_CHECK      el CV se tradujo: se omiten las comprobaciones dependientes del idioma.
@@ -26,7 +27,14 @@ from app.services.text_utils import stem as _stem
 from app.services.text_utils import tokens as _tokens
 
 UNGROUNDED_CODES = frozenset(
-    {"UNGROUNDED_DATE", "UNGROUNDED_METRIC", "UNGROUNDED_ENTITY", "UNGROUNDED_SKILL", "GAP_LEAKED"}
+    {
+        "UNGROUNDED_DATE",
+        "UNGROUNDED_METRIC",
+        "UNGROUNDED_ENTITY",
+        "UNGROUNDED_SKILL",
+        "UNGROUNDED_CLAIM",
+        "GAP_LEAKED",
+    }
 )
 
 _ES_HINTS = frozenset("de la el los las y en con para del que experiencia desarrollo".split())
@@ -48,6 +56,18 @@ _PARENS = re.compile(r"\([^)]*\)")
 
 _EXPERIENCE = re.compile(r"experien|trayectoria|employment|work history|empleo", re.I)
 _EDUCATION = re.compile(r"formaci|educaci|education|estudios|academ", re.I)
+_SUMMARY = re.compile(r"resumen|perfil|summary|profile|about|sobre m|extracto|objetivo|presentaci", re.I)
+# Cláusulas del resumen: se separan por puntuación, no por " y " (forma parte de las frases).
+_CLAUSE_SEPARATORS = re.compile(r"[.;:!?]+(?:\s+|$)|,\s+|\s+[—–-]\s+")
+# Palabras que describen sin afirmar nada concreto: no cuentan ni como apoyo ni como invención.
+_NEUTRAL_CLAIM_WORDS = frozenset(
+    "experiencia experience profesional professional perfil profile ano anos year years actualmente "
+    "currently amplia solida trayectoria career carrera".split()
+)
+# Una cláusula se marca si tiene al menos 3 palabras con contenido y menos de 1/5 respaldadas
+# (las cualidades inventadas suelen tener 0; reformular hechos reales ancla al menos 1 de cada 4).
+_CLAIM_MIN_WORDS = 3
+_CLAIM_MIN_GROUNDED_RATIO = 0.2
 _SKILLS = re.compile(
     r"habilidad|skill|competenc|conocimiento|tecnolog|technical|aptitud|herramienta|idioma|language", re.I
 )
@@ -174,6 +194,7 @@ class OutputValidator:
             sections = self._sections(lines)
             self._check_entities(sections, source, add)
             self._check_skills(sections, source, add)
+            self._check_summary_claims(sections, source, add)
         report.leaked_keywords = self._check_gap_leaks(markdown, job_keywords, source, lines, add)
         self._check_format(markdown, source_cv, add)
         return report
@@ -257,6 +278,42 @@ class OutputValidator:
                             "UNGROUNDED_SKILL",
                             f"La habilidad '{item}' no aparece en tu CV original.",
                             item,
+                            line,
+                        )
+
+    @staticmethod
+    def _check_summary_claims(sections: list[_Section], source: SourceIndex, add) -> None:
+        """Afirmaciones del resumen sin apoyo en el CV: el LLM tiende a rellenarlo con cualidades
+        genéricas ("orientada a resultados", "liderazgo de equipos") que el candidato no ha escrito.
+
+        Reformular hechos reales no se marca porque la cláusula se ancla en algo del CV
+        ("gestionando bases de datos PostgreSQL" se apoya en PostgreSQL)."""
+        for section in sections:
+            if not _SUMMARY.search(section.title):
+                continue
+            for level, line in section.lines:
+                if level:
+                    continue
+                text = _clean_markdown(_LIST_MARKER.sub("", line))
+                for clause in _CLAUSE_SEPARATORS.split(text):
+                    clause = clause.strip(" .,;:-")
+                    words = [
+                        t
+                        for t in _tokens(clause)
+                        if t not in _STOPWORDS
+                        and _stem(t) not in _NEUTRAL_CLAIM_WORDS
+                        and t not in _NEUTRAL_CLAIM_WORDS
+                        and not t.isdigit()
+                        and len(t) > 2
+                    ]
+                    if len(words) < _CLAIM_MIN_WORDS:
+                        continue
+                    grounded = sum(source._token_grounded(t) for t in words)
+                    if grounded / len(words) < _CLAIM_MIN_GROUNDED_RATIO:
+                        add(
+                            "UNGROUNDED_CLAIM",
+                            f"La afirmación «{clause}» no se apoya en nada de tu CV original.",
+                            clause,
                             line,
                         )
 

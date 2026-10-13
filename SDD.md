@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.2.0 |
+| **Versión** | 1.2.1 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -17,6 +17,7 @@
 | 1.0.0 | 2026-10-12 | Versión inicial: arquitectura, LLM híbrido, flujo en memoria, reglas anti-alucinación. |
 | 1.1.0 | 2026-10-12 | Ajustes tras implementar el MVP: endpoint `POST /api/v1/keys/validate`; validador con comprobación de keywords filtradas, aviso `LIMITED_CHECK` para CVs traducidos y corrección automática desde el primer dato no respaldado; runtime Python 3.12.10 nativo en Render. |
 | 1.2.0 | 2026-10-13 | Exportación DOCX/PDF apta para ATS generada en el cliente (ADR-007), resaltado en verde de las reformulaciones (`changes`, §9.6) y mejoras de rendimiento del scroll. |
+| 1.2.1 | 2026-10-13 | Validador: afirmaciones del resumen sin respaldo (`UNGROUNDED_CLAIM`) y prompt v2 con la regla "resumen sin relleno". |
 
 ---
 
@@ -697,6 +698,7 @@ Es un componente **determinista** que contrasta el Markdown generado con el text
 | **Skills** | Cada ítem de la sección Habilidades debe aparecer en el CV (o en un diccionario de sinónimos permitidos: `js↔javascript`, `k8s↔kubernetes`, `postgres↔postgresql`…). Los calificativos añadidos ("Inglés nativo" frente a "B2") se detectan. | `warning: UNGROUNDED_SKILL` |
 | **Gaps filtrados** | Keywords de la oferta que **no** están en el CV original (cobertura del 100 %) pero **sí** en el CV optimizado. Se excluyen del match score. | `warning: GAP_LEAKED` |
 | **Estructura** | Longitud razonable (el output no supera 1,6 veces el CV + 400 caracteres) y sin tablas, imágenes ni HTML. | `warning: FORMAT` |
+| **Afirmaciones del resumen** | En las secciones de resumen o perfil, cada cláusula (separada por puntuación) con al menos 3 palabras con contenido debe tener al menos 1/5 de ellas respaldadas por el CV. Las cualidades inventadas ("orientada a resultados") no comparten nada con el CV; reformular hechos reales sí se ancla ("bases de datos **PostgreSQL**"). El prompt v2 lo prohíbe también de forma explícita. | `warning: UNGROUNDED_CLAIM` |
 | **CV traducido** | Si el idioma del output difiere del original (heurística de *stopwords*), se omiten las comprobaciones de entidades y skills, que dependen del idioma, y se avisa. Fechas, cifras, contacto y gaps se siguen validando. | `warning: LIMITED_CHECK` |
 
 **Política de severidad:**

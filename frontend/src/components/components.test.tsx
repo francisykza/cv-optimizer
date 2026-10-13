@@ -123,6 +123,23 @@ describe('ResultViewer', () => {
     expect(writeText).toHaveBeenCalledWith(result.optimized_markdown)
   })
 
+  it('muestra las afirmaciones del resumen sin respaldo como avisos', () => {
+    const claim = 'Orientada a la mejora continua'
+    const result: OptimizeResponse = {
+      ...RESULT,
+      optimized_markdown: `# Ana
+
+## Resumen profesional
+${claim}.`,
+      warnings: [{ code: 'UNGROUNDED_CLAIM', message: 'x', term: claim, snippet: null }],
+      quality: 'needs_review',
+    }
+    render(<ResultViewer result={result} onReset={() => {}} />)
+
+    expect(screen.getByText('Afirmación')).toBeInTheDocument()
+    expect(document.querySelector('mark[data-kind="ungrounded"]')).toHaveTextContent(claim)
+  })
+
   it('ofrece la descarga en Word, PDF y Markdown', async () => {
     const user = userEvent.setup()
     render(<ResultViewer result={RESULT} onReset={() => {}} />)

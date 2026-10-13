@@ -174,3 +174,49 @@ def test_source_index_grounding():
 def test_detect_language():
     assert detect_language(FAITHFUL_CV) == "es"
     assert detect_language("Experience with the design and development of APIs for the team") == "en"
+
+
+# --- Afirmaciones del resumen ------------------------------------------------------------------
+
+REAL_SUMMARY = (  # Resumen real devuelto por gpt-oss-120b en producción (13/10/2026).
+    "## Resumen profesional\n"
+    "Desarrolladora Backend con experiencia creando APIs REST con Python y FastAPI, gestionando bases de "
+    "datos PostgreSQL y desplegando contenedores Docker. Orientada a la mejora continua y al trabajo "
+    "autónomo en entornos colaborativos.\n"
+)
+
+
+def claims(report) -> list[str]:
+    return [w.term for w in report.warnings if w.code == "UNGROUNDED_CLAIM"]
+
+
+def test_invented_soft_skills_in_summary_are_flagged():
+    report = validate(REAL_SUMMARY)
+    invented = "Orientada a la mejora continua y al trabajo autónomo en entornos colaborativos"
+    assert claims(report) == [invented]
+    assert report.ungrounded_count == 1  # cuenta como dato no respaldado: dispara la corrección
+
+
+def test_rewording_real_facts_in_summary_is_not_flagged():
+    # "gestionando bases de datos PostgreSQL" se ancla en PostgreSQL; no es una invención.
+    summary = REAL_SUMMARY.split(". Orientada")[0] + ".\n"
+    assert claims(validate(summary)) == []
+
+
+def test_invented_clause_after_comma_is_flagged():
+    summary = "## Perfil\nDesarrolladora backend con Python, orientada a resultados y liderazgo de equipos.\n"
+    assert claims(validate(summary)) == ["orientada a resultados y liderazgo de equipos"]
+
+
+def test_neutral_wording_and_short_lists_are_not_claims():
+    summary = "## Resumen\nProfesional con amplia experiencia. Python, FastAPI, Django.\n"
+    assert claims(validate(summary)) == []
+
+
+def test_claims_are_only_checked_in_the_summary_section():
+    text = "## Experiencia\n- Orientada a la mejora continua y al trabajo autónomo en equipos.\n"
+    assert claims(validate(text)) == []
+
+
+def test_faithful_cv_summary_has_no_claims():
+    assert claims(validate(FAITHFUL_CV)) == []

@@ -8,6 +8,7 @@ const LABELS: Record<WarningCode, string> = {
   UNGROUNDED_METRIC: 'Cifra',
   UNGROUNDED_ENTITY: 'Dato',
   UNGROUNDED_SKILL: 'Habilidad',
+  UNGROUNDED_CLAIM: 'Afirmación',
   GAP_LEAKED: 'Requisito de la oferta',
   FORMAT: 'Formato',
   LIMITED_CHECK: 'Aviso',
@@ -36,7 +37,7 @@ export function WarningsPanel({ warnings, onLocate }: WarningsPanelProps) {
         <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
           {limited
             ? 'Fechas, cifras y datos de contacto coinciden con tu CV original.'
-            : 'Fechas, cifras, empresas, títulos y habilidades coinciden con tu CV original.'}
+            : 'Fechas, cifras, empresas, títulos, habilidades y el resumen coinciden con tu CV original.'}
         </p>
         {others.length > 0 && <OtherWarnings warnings={others} />}
       </div>
