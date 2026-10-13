@@ -73,6 +73,9 @@ class OptimizeResponse(BaseModel):
     warnings: list[ValidationWarning]
     # Expresiones reformuladas respecto al CV original (solo para resaltarlas en la interfaz).
     changes: list[str] = Field(default_factory=list)
+    # Requisitos verificables de la oferta que no están en el CV original (máx. 5). El usuario
+    # decide si los añade: es una afirmación suya, no de la IA.
+    ats_suggestions: list[str] = Field(default_factory=list)
     # "needs_review" si, tras el intento de corrección, sigue habiendo datos no respaldados.
     quality: Literal["ok", "needs_review"]
     meta: OptimizeMeta

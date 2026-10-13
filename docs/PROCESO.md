@@ -28,7 +28,7 @@ El proyecto empezó por el diseño, no por el código. El primer entregable fue 
 - el flujo de datos en memoria, sin persistencia,
 - y la **regla de negocio principal: el sistema no puede inventar experiencia**.
 
-A partir de ahí, cada funcionalidad se encargó al agente como una **especificación acotada**, con contexto, objetivo, restricciones y criterios de aceptación. Antes de tocar código, el agente proponía un plan que el autor revisaba y aprobaba (modo *plan* de Claude Code). El SDD se fue actualizando con cada cambio relevante; hoy va por la versión 1.2.2 e incluye siete decisiones de arquitectura (ADR).
+A partir de ahí, cada funcionalidad se encargó al agente como una **especificación acotada**, con contexto, objetivo, restricciones y criterios de aceptación. Antes de tocar código, el agente proponía un plan que el autor revisaba y aprobaba (modo *plan* de Claude Code). El SDD se fue actualizando con cada cambio relevante; hoy va por la versión 1.3.0 e incluye ocho decisiones de arquitectura (ADR).
 
 **Por qué este enfoque con un agente de IA.** Un agente de código es muy productivo, pero tiende a rellenar los huecos de una petición ambigua con suposiciones. Una especificación escrita reduce esos huecos, ofrece un criterio objetivo para revisar el resultado y deja constancia de *por qué* se tomó cada decisión, algo que el código por sí solo no explica.
 
@@ -84,6 +84,7 @@ Los prompts literales de la conversación no se incluyen en el repositorio a pro
 | 7. Experiencia de uso | Scroll fluido, descarga para ATS y resaltado de cambios | Sin tirones en el scroll, exportación DOCX y PDF verificada como legible por ATS, reformulaciones en verde |
 | 8. Validación del resumen | Detectar cualidades inventadas en el resumen | Aviso `UNGROUNDED_CLAIM` y prompt v2 con la regla "resumen sin relleno" |
 | 9. Puntuación honesta | Que la compatibilidad no baje al optimizar y mida requisitos reales | Recuperación automática de keywords perdidas, filtro de genéricas y rasgos personales aparte (prompt v3) |
+| 10. Sugerencias ATS | Un SDD V2 del autor: sugerencias que se añaden al CV con un clic | El plan contrastó el SDD V2 con el código existente: parte ya estaba hecha (JSON mode, parseo, bloqueo durante la carga) y sustituir el contrato habría eliminado la puntuación y los avisos. Se amplió el contrato, las sugerencias se calculan sin LLM y el CV se deriva en el cliente (ADR-008) |
 
 El historial de commits refleja estas fases y cada mensaje explica el *porqué* del cambio, no solo el *qué*.
 
@@ -105,7 +106,7 @@ Las pruebas con usuarios y servicios reales sacaron a la luz problemas que los t
 
 El criterio fue no dar nada por terminado sin una prueba que lo demostrara:
 
-- **Tests automáticos:** 129 en total (100 en el backend con pytest y 29 en el frontend con Vitest), ejecutados en cada push por la CI.
+- **Tests automáticos:** 141 en total (103 en el backend con pytest y 38 en el frontend con Vitest), ejecutados en cada push por la CI.
 - **Controles negativos:** los tests críticos se comprobaron haciéndolos fallar a propósito. Por ejemplo, el test que garantiza que el PDF nunca se escribe en disco falla si se quita la corrección.
 - **Flujo completo con un LLM simulado:** un servidor local que imita a Groq devolviendo CVs con datos inventados. Así se probó la corrección automática y el resaltado sin gastar cuota.
 - **Seguridad del navegador:** el build de producción se sirvió localmente con la misma Content-Security-Policy que Vercel, para confirmar que la app y las exportaciones no la violan.
@@ -127,7 +128,7 @@ El proyecto aplica a su propio dominio los principios que exige el uso de IA gen
 
   Lo que no se puede verificar se muestra al usuario, nunca se oculta.
 - **Privacidad:** el PDF se procesa en memoria, sin base de datos y sin registrar contenido ni claves. La exportación se genera en el navegador para que el CV no vuelva a viajar al servidor.
-- **Control del usuario:** modo BYOK con su propia clave, que nunca se guarda en el servidor.
+- **Control del usuario:** modo BYOK con su propia clave, que nunca se guarda en el servidor. Las sugerencias ATS solo entran en el CV si el usuario las añade, marcadas como "Añadido por ti": la IA no afirma nada en su nombre.
 - **Límites conocidos y documentados:** el validador es heurístico, no semántico. Si el CV se traduce, se avisa de que la comprobación es parcial. El detalle está en el SDD (§7.3) y en el ADR-005.
 - **Transparencia sobre el propio desarrollo:** este documento.
 
@@ -136,9 +137,9 @@ El proyecto aplica a su propio dominio los principios que exige el uso de IA gen
 | Indicador | Valor |
 |---|---|
 | Duración | 2 días (12 y 13 de octubre de 2026) |
-| Especificación | `SDD.md`: ~1.360 líneas, versión 1.2.2, 7 ADRs |
+| Especificación | `SDD.md`: ~1.400 líneas, versión 1.3.0, 8 ADRs |
 | Código | ~4.700 líneas de código de aplicación y ~1.300 de tests, en Python y TypeScript |
-| Tests | 129 (100 en el backend y 29 en el frontend) |
+| Tests | 141 (103 en el backend y 38 en el frontend) |
 | Fallos de producción resueltos | 7, cada uno con su test de regresión |
 | Coste de infraestructura | 0 €: planes gratuitos de Groq, Render y Vercel |
 
@@ -148,7 +149,8 @@ El proyecto aplica a su propio dominio los principios que exige el uso de IA gen
 2. **Revisar el plan antes del código ahorra más que revisar el código.** Los cambios de rumbo son baratos en el plan y caros en la implementación.
 3. **Los tests simulados no sustituyen a producción.** Seis de los siete fallos de §5 dependían de servicios o datos reales: el panel de Render, el catálogo de modelos de Groq, el arranque en frío y las respuestas reales del LLM ante CVs y ofertas de sectores distintos. Probar pronto con servicios reales es imprescindible.
 4. **Un LLM puede cumplir la letra de una regla sin cumplir su intención.** Respetó "no inventar experiencia", pero añadió cualidades genéricas al resumen. Las reglas de negocio críticas necesitan una verificación determinista fuera del modelo, además de la instrucción en el prompt.
-5. **La autoría y la transparencia no están reñidas.** El autor dirige, decide y responde del resultado; documentar con precisión el papel de la IA forma parte de ese trabajo.
+5. **Una especificación también se revisa contra el código.** El SDD V2 pedía sustituir el contrato de la API; contrastarlo con lo ya construido en la fase de plan evitó perder funcionalidad y mantuvo la regla de no inventar.
+6. **La autoría y la transparencia no están reñidas.** El autor dirige, decide y responde del resultado; documentar con precisión el papel de la IA forma parte de ese trabajo.
 
 ## 10. Cómo continuar el proyecto
 

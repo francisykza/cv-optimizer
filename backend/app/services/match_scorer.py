@@ -109,6 +109,18 @@ def dropped_keywords(keywords: list[str], original_cv: str, optimized_cv: str) -
     return [kw for kw in keywords if contains(original_cv, kw) and not contains(optimized_cv, kw)]
 
 
+def ats_suggestions(
+    match: MatchReport, original_cv: str, optimized_cv: str, limit: int = 5
+) -> list[str]:
+    """Requisitos verificables de la oferta que faltan y que el candidato no tenía en su CV
+    original. Nunca rasgos personales: `missing_keywords` ya los excluye."""
+    return [
+        kw
+        for kw in match.missing_keywords
+        if not contains(original_cv, kw) and not contains(optimized_cv, kw)
+    ][:limit]
+
+
 def score(
     keywords: list[str],
     original_cv: str,

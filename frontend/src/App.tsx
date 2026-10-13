@@ -1,5 +1,6 @@
 import { CloudOff, Coffee } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { Toaster } from 'react-hot-toast'
 
 import { ApiKeySettings } from './components/ApiKeySettings'
 import { ErrorAlert } from './components/ErrorAlert'
@@ -144,7 +145,14 @@ export default function App() {
               {loading ? (
                 <ResultSkeleton />
               ) : (
-                optimize.result && <ResultViewer result={optimize.result} onReset={optimize.reset} />
+                optimize.result && (
+                  // La key reinicia las habilidades añadidas con cada resultado nuevo.
+                  <ResultViewer
+                    key={optimize.result.request_id ?? 'result'}
+                    result={optimize.result}
+                    onReset={optimize.reset}
+                  />
+                )
               )}
             </div>
           </section>
@@ -152,6 +160,10 @@ export default function App() {
       </main>
 
       <Footer />
+      <Toaster
+        position="bottom-center"
+        toastOptions={{ className: '!rounded-xl !text-sm dark:!bg-slate-800 dark:!text-slate-100' }}
+      />
     </div>
   )
 }

@@ -122,6 +122,7 @@ class OptimizerService:
             exclude=report.leaked_keywords,
             soft_skills=soft_skills,
         )
+        suggestions = match_scorer.ats_suggestions(match, extracted.text, output.optimized_markdown)
         quality = "needs_review" if report.ungrounded_count else "ok"
         # Lo marcado en ámbar por el validador no es una reformulación: se excluye del verde.
         changes = detect_changes(
@@ -139,10 +140,12 @@ class OptimizerService:
         logger.info(
             "optimize_done request_id=%s mode=%s model=%s pages=%d cv_chars=%d offer_chars=%d "
             "tokens_in=%d tokens_out=%d llm_calls=%d ungrounded_first=%d ungrounded_final=%d "
-            "corrections=%d dropped_first=%d dropped_final=%d quality=%s latency_ms=%d",
+            "corrections=%d dropped_first=%d dropped_final=%d suggestions=%d quality=%s "
+            "latency_ms=%d",
             request_id, mode, responses[-1].model, extracted.pages, len(extracted.text),
             len(job_offer), tokens.input, tokens.output, len(responses), first_ungrounded,
-            report.ungrounded_count, corrections, first_dropped, len(dropped), quality, latency_ms,
+            report.ungrounded_count, corrections, first_dropped, len(dropped), len(suggestions),
+            quality, latency_ms,
         )
 
         return OptimizeResponse(
@@ -153,6 +156,7 @@ class OptimizerService:
             changes_summary=output.changes_summary,
             warnings=report.warnings,
             changes=changes,
+            ats_suggestions=suggestions,
             quality=quality,
             meta=OptimizeMeta(
                 mode=mode,

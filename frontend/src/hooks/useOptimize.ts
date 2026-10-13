@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
 
 import { ApiError, optimizeCv, type OptimizeParams } from '../services/api'
 import type { OptimizeResponse } from '../types/api'
@@ -57,8 +58,11 @@ export function useOptimize() {
       setStatus('success')
     } catch (err) {
       if (controller.signal.aborted) return
-      setError(err instanceof ApiError ? err : new ApiError('UNKNOWN', 'Ha ocurrido un error inesperado.', 0))
+      const apiError = err instanceof ApiError ? err : new ApiError('UNKNOWN', 'Ha ocurrido un error inesperado.', 0)
+      setError(apiError)
       setStatus('error')
+      // Aviso inmediato; el ErrorAlert conserva el detalle y las acciones (reintentar, usar mi clave).
+      toast.error(apiError.message, { id: 'optimize-error' })
     } finally {
       clearTimers()
     }

@@ -1,9 +1,12 @@
 import { Code2, Eye, FileCheck2, Lightbulb, RotateCcw, ShieldAlert } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
 
 import { cn, formatNumber } from '../../lib/format'
+import { injectSkill } from '../../lib/injectSkill'
 import type { HighlightGroup } from '../../lib/rehypeHighlightTerms'
-import { UNGROUNDED_CODES, type OptimizeResponse } from '../../types/api'
+import { UNGROUNDED_CODES, type MatchReport, type OptimizeResponse } from '../../types/api'
+import { AtsSuggestions } from './AtsSuggestions'
 import { CopyButton } from './CopyButton'
 import { DownloadMenu } from './DownloadMenu'
 import { InsightList } from './InsightList'
@@ -22,14 +25,28 @@ interface ResultViewerProps {
 export function ResultViewer({ result, onReset }: ResultViewerProps) {
   const [tab, setTab] = useState<Tab>('preview')
   const [showChanges, setShowChanges] = useState(true)
+  // Habilidades sugeridas que el usuario ha decidido añadir. El CV visible se deriva del Markdown
+  // del servidor: quitar una es volver a calcularlo sin ella, sin riesgo de corromper el texto.
+  const [added, setAdded] = useState<string[]>([])
   const previewRef = useRef<HTMLDivElement>(null)
-  const { optimized_markdown: markdown, meta } = result
+  const { meta } = result
+
+  const markdown = useMemo(() => added.reduce(injectSkill, result.optimized_markdown), [added, result.optimized_markdown])
+  const suggestions = (result.ats_suggestions ?? []).filter((s) => !added.includes(s))
+  const match = useMemo(() => withAddedSkills(result.match, added), [result.match, added])
+
+  const handleAddSkill = (skill: string) => {
+    setAdded((prev) => (prev.includes(skill) ? prev : [...prev, skill]))
+    toast.success('Habilidad añadida al currículum')
+  }
+  const handleRemoveSkill = (skill: string) => setAdded((prev) => prev.filter((s) => s !== skill))
 
   const ungrounded = result.warnings.filter((w) => UNGROUNDED_CODES.has(w.code))
   const changes = result.changes ?? []
   // Solo para la vista previa: copiar y descargar usan siempre el Markdown sin marcas.
   const highlightGroups: HighlightGroup[] = [
     { kind: 'ungrounded', terms: ungrounded.map((w) => w.term).filter((t): t is string => Boolean(t)) },
+    { kind: 'added', terms: added },
     ...(showChanges ? [{ kind: 'change' as const, terms: changes }] : []),
   ]
 
@@ -119,7 +136,7 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
             ))}
           </div>
           {tab === 'preview' && changes.length > 0 && (
-            <ChangesToggle checked={showChanges} onChange={setShowChanges} count={changes.length} />
+            <ChangesToggle checked={showChanges} onChange={setShowChanges} count={changes.length} added={added.length > 0} />
           )}
           </div>
 
@@ -143,9 +160,10 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
         </div>
 
         <aside className="space-y-6" aria-label="Informe de compatibilidad">
+          <AtsSuggestions suggestions={suggestions} added={added} onAdd={handleAddSkill} onRemove={handleRemoveSkill} />
           <WarningsPanel warnings={result.warnings} onLocate={locate} />
-          <MatchScoreCard match={result.match} />
-          <KeywordList match={result.match} />
+          <MatchScoreCard match={match} />
+          <KeywordList match={match} added={added} />
           <InsightList
             title="Lo que pide la oferta y no está en tu CV"
             description="No lo hemos añadido porque no aparece en tu CV original. Si lo tienes, inclúyelo tú mismo."
@@ -160,7 +178,28 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
   )
 }
 
-function ChangesToggle({ checked, onChange, count }: { checked: boolean; onChange: (v: boolean) => void; count: number }) {
+/** Las habilidades que añade el usuario pasan de "faltan" a "cubiertas" y la puntuación se
+ *  recalcula igual que en el backend (cubiertas / total). */
+function withAddedSkills(match: MatchReport, added: string[]): MatchReport {
+  if (added.length === 0) return match
+  const total = match.matched_keywords.length + match.missing_keywords.length
+  const matched = [...match.matched_keywords, ...match.missing_keywords.filter((kw) => added.includes(kw))]
+  return {
+    ...match,
+    matched_keywords: matched,
+    missing_keywords: match.missing_keywords.filter((kw) => !added.includes(kw)),
+    score_after: total ? Math.round((100 * matched.length) / total) : match.score_after,
+  }
+}
+
+interface ChangesToggleProps {
+  checked: boolean
+  onChange: (v: boolean) => void
+  count: number
+  added: boolean
+}
+
+function ChangesToggle({ checked, onChange, count, added }: ChangesToggleProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pb-2.5 text-xs text-slate-600 dark:text-slate-400">
       <label className="inline-flex cursor-pointer items-center gap-2 font-medium">
@@ -194,6 +233,12 @@ function ChangesToggle({ checked, onChange, count }: { checked: boolean; onChang
             <span className="size-2.5 rounded-sm bg-amber-200 ring-1 ring-amber-300 dark:bg-amber-400/30 dark:ring-amber-400/40" />
             No está en tu CV
           </span>
+          {added && (
+            <span className="flex items-center gap-1.5">
+              <span className="size-2.5 rounded-sm bg-sky-100 ring-1 ring-sky-300 dark:bg-sky-500/30 dark:ring-sky-500/40" />
+              Añadido por ti
+            </span>
+          )}
         </span>
       )}
     </div>

@@ -1,8 +1,8 @@
-import { Check, Minus, UserRound } from 'lucide-react'
+import { Check, Minus, Plus, UserRound } from 'lucide-react'
 
 import type { MatchReport } from '../../types/api'
 
-export function KeywordList({ match }: { match: MatchReport }) {
+export function KeywordList({ match, added = [] }: { match: MatchReport; added?: string[] }) {
   const softSkills = match.soft_skills ?? []
   const hasKeywords = match.matched_keywords.length + match.missing_keywords.length > 0
   if (!hasKeywords && softSkills.length === 0) return null
@@ -13,15 +13,25 @@ export function KeywordList({ match }: { match: MatchReport }) {
         <>
           <h3 className="text-sm font-semibold">Palabras clave de la oferta</h3>
           <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Palabras clave">
-            {match.matched_keywords.map((kw) => (
-              <li
-                key={kw}
-                className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20"
-              >
-                <Check className="size-3" aria-label="Incluida:" />
-                {kw}
-              </li>
-            ))}
+            {match.matched_keywords.map((kw) =>
+              added.includes(kw) ? (
+                <li
+                  key={kw}
+                  className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800 ring-1 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/20"
+                >
+                  <Plus className="size-3" aria-label="Añadida por ti:" />
+                  {kw}
+                </li>
+              ) : (
+                <li
+                  key={kw}
+                  className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20"
+                >
+                  <Check className="size-3" aria-label="Incluida:" />
+                  {kw}
+                </li>
+              ),
+            )}
             {match.missing_keywords.map((kw) => (
               <li
                 key={kw}

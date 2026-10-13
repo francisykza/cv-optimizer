@@ -20,6 +20,7 @@
     "pdfmake": "^0.3.11",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-hot-toast": "^2.6.1",
     "react-markdown": "^10.1.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",

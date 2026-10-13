@@ -116,3 +116,25 @@ def test_soft_skill_detection():
         assert is_soft_skill(soft), soft
     for hard in ("contabilidad", "Excel medio", "Responsable de facturación", "Carnet de conducir", "Python"):
         assert not is_soft_skill(hard), hard
+
+
+def test_ats_suggestions_are_missing_requirements_not_in_the_original_cv():
+    from app.services.match_scorer import ats_suggestions
+
+    keywords = ["Python", "Docker", "Kubernetes", "AWS", "Terraform", "Go", "Kafka", "SQL"]
+    original = "Desarrollador con Python y SQL."
+    optimized = "Desarrollador backend con Python y SQL."
+    report = score(keywords, original, optimized, soft_skills=["proactivo"])
+    # Máximo 5, en el orden de la oferta, sin lo que ya está en el CV ni rasgos personales.
+    assert ats_suggestions(report, original, optimized) == ["Docker", "Kubernetes", "AWS", "Terraform", "Go"]
+
+
+def test_ats_suggestions_skip_terms_already_in_the_original_cv():
+    """Una keyword que el CV tenía y la optimización quitó se avisa con KEYWORD_DROPPED: no es
+    una sugerencia, porque no sería algo nuevo que el usuario deba confirmar."""
+    from app.services.match_scorer import ats_suggestions
+
+    original = "Contabilidad con Contanet."
+    optimized = "Contabilidad con software contable."
+    report = score(["Contanet", "Excel"], original, optimized)
+    assert ats_suggestions(report, original, optimized) == ["Excel"]

@@ -2,15 +2,16 @@
 // Se ejecuta DESPUÉS de rehype-sanitize, así que solo añade marcas sobre contenido ya saneado.
 // Solo afecta a la vista previa: copiar y descargar parten siempre del Markdown sin marcas.
 
-export type HighlightKind = 'ungrounded' | 'change'
+export type HighlightKind = 'ungrounded' | 'added' | 'change'
 
 export interface HighlightGroup {
   kind: HighlightKind
   terms: string[]
 }
 
-// Si un término está en los dos grupos, gana el aviso de "no está en tu CV".
-const PRIORITY: Record<HighlightKind, number> = { ungrounded: 2, change: 1 }
+// Si un término está en varios grupos, gana el aviso de "no está en tu CV" y después lo que ha
+// añadido el propio usuario.
+const PRIORITY: Record<HighlightKind, number> = { ungrounded: 3, added: 2, change: 1 }
 
 interface TextNode {
   type: 'text'

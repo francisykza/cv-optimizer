@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.2.2 |
+| **Versión** | 1.3.0 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -19,6 +19,7 @@
 | 1.2.0 | 2026-10-13 | Exportación DOCX/PDF apta para ATS generada en el cliente (ADR-007), resaltado en verde de las reformulaciones (`changes`, §9.6) y mejoras de rendimiento del scroll. |
 | 1.2.1 | 2026-10-13 | Validador: afirmaciones del resumen sin respaldo (`UNGROUNDED_CLAIM`) y prompt v2 con la regla "resumen sin relleno". |
 | 1.2.2 | 2026-10-13 | Puntuación: keywords verificables sin genéricas, `soft_skills` aparte, corrección de keywords perdidas y aviso `KEYWORD_DROPPED`; prompt v3. |
+| 1.3.0 | 2026-10-13 | Sugerencias ATS que el usuario añade con un clic (`ats_suggestions`, §9.7, ADR-008); notificaciones con `react-hot-toast`. |
 
 ---
 
@@ -854,8 +855,10 @@ Comprueba una clave BYOK llamando a `GET /models` del proveedor, que no consume 
     "score_before": 42,
     "score_after": 71,
     "matched_keywords": ["Python", "FastAPI", "PostgreSQL", "Docker"],
-    "missing_keywords": ["Kubernetes", "Terraform"]
+    "missing_keywords": ["Kubernetes", "Terraform"],
+    "soft_skills": ["proactividad"]
   },
+  "ats_suggestions": ["Kubernetes", "Terraform"],
   "gaps": [
     "La oferta pide experiencia con Kubernetes; no aparece en el CV.",
     "Se requiere inglés C1; el CV indica B2."
@@ -1113,7 +1116,34 @@ stateDiagram-v2
 - **Resaltado de cambios:** el backend devuelve `changes`, las expresiones del CV optimizado que no estaban en el original. Las calcula `change_detector.py` palabra a palabra, normalizando tildes, plurales y sinónimos, de modo que reordenar no cuenta y reformular sí.
 - **Cómo se muestra:** la vista previa las marca en verde (activable con un interruptor) y los datos no respaldados del validador siguen en ámbar, con prioridad sobre el verde. Copiar y descargar usan siempre el Markdown sin marcas.
 
-### 9.7 Dependencias principales (frontend)
+### 9.7 Sugerencias ATS (interacción con un clic)
+
+- **Qué son:** hasta 5 requisitos **verificables** de la oferta (herramientas, titulaciones, certificaciones, carnés…) que no están en el CV original. Nunca rasgos personales.
+- **Origen determinista:** el backend las calcula en `match_scorer.ats_suggestions()` a partir de `missing_keywords`, excluyendo lo que ya aparece en el CV original o en el optimizado. No se piden al LLM (ADR-008).
+- **Contrato:** campo adicional `ats_suggestions: string[]` en `OptimizeResponse`. El resto de la respuesta no cambia.
+- **Regla de negocio, "afirmación del usuario frente a la de la IA":**
+  - La IA nunca añade al CV algo que no esté en el original.
+  - El usuario sí puede hacerlo, pero de forma explícita y visible:
+    - El panel advierte: "Añade solo lo que realmente dominas".
+    - Lo añadido se resalta en azul ("Añadido por ti") en la vista previa.
+    - Cada añadido se puede quitar.
+- **Estado en el frontend:**
+  - `ResultViewer` guarda solo `added: string[]`, y el CV se deriva con `added.reduce(injectSkill, optimized_markdown)`.
+  - Las sugerencias visibles son `ats_suggestions` menos las añadidas.
+  - Quitar una habilidad es recalcular sin ella, así que el texto nunca se corrompe.
+- **`injectSkill` (función pura):**
+  - Localiza la sección de habilidades (`##`/`###` habilidades, competencias, conocimientos, herramientas, skills…).
+  - Si la sección es una lista, añade una viñeta. Si es un párrafo con comas, concatena.
+  - Si no existe, crea `## Habilidades` (o `## Skills` si el CV está en inglés).
+  - No duplica habilidades que ya estén en el CV.
+- **Efectos de añadir:**
+  - La puntuación y las palabras clave se recalculan en el cliente con la misma fórmula del backend (cubiertas / total).
+  - Copiar y descargar incluyen las habilidades añadidas, sin marcas.
+  - Se muestra `toast.success`.
+  - Los errores de la API muestran `toast.error` además del `ErrorAlert`, que conserva las acciones de reintentar y usar la clave propia.
+- **Mientras hay una petición en curso:** los inputs están desactivados y el resultado se sustituye por el esqueleto de carga, así que no se puede interactuar con los chips.
+
+### 9.8 Dependencias principales (frontend)
 
 | Paquete | Uso |
 |---|---|
@@ -1122,6 +1152,7 @@ stateDiagram-v2
 | `@tanstack/react-query` | Mutación y estado de la petición |
 | `react-dropzone` | Subida del PDF |
 | `react-markdown`, `remark-gfm`, `rehype-sanitize` | Render seguro |
+| `react-hot-toast` | Notificaciones (habilidad añadida, error de la API) |
 | `i18next`, `react-i18next` | i18n |
 | Dev: `vite`, `typescript`, `vitest`, `@testing-library/react`, `msw`, `eslint`, `prettier` | Calidad |
 
@@ -1318,6 +1349,22 @@ docker compose up --build
   - (+) El CV no vuelve a viajar al servidor (privacidad) y el backend sigue siendo *stateless* y sin dependencias de maquetación.
   - (+) La carga inicial no empeora.
   - (−) Los fragmentos de exportación pesan (~1 MB pdfmake + ~0,85 MB de fuentes) y se descargan la primera vez que se pide un PDF.
+
+### ADR-008: Sugerencias ATS deterministas y CV derivado en el cliente
+
+- **Contexto:**
+  - Se propuso (SDD V2) que el LLM devolviera `{cv_optimizado, sugerencias_ats}` en lugar de la respuesta actual.
+  - Eso habría eliminado la puntuación, los avisos del validador y los cambios resaltados.
+  - Además, habría añadido otra lista generada por el LLM sin verificar.
+- **Decisión:**
+  - Ampliar el contrato con `ats_suggestions` en lugar de sustituirlo.
+  - Calcular las sugerencias de forma determinista a partir de las keywords ya filtradas.
+  - En el frontend, derivar el CV de la lista de habilidades añadidas en lugar de mutar el Markdown.
+- **Consecuencias:**
+  - (+) Sin tokens extra ni nuevas fuentes de alucinación.
+  - (+) Compatibilidad hacia atrás.
+  - (+) Deshacer es trivial.
+  - (−) Las sugerencias dependen de la calidad de `job_keywords`; si el LLM no extrae un requisito, no se sugiere.
 
 ---
 

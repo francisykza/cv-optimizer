@@ -6,7 +6,8 @@ import { type HighlightGroup, rehypeHighlightTerms } from '../../lib/rehypeHighl
 
 interface MarkdownPreviewProps {
   markdown: string
-  /** Resaltados de la vista previa: datos no respaldados (ámbar) y reformulaciones (verde). */
+  /** Resaltados de la vista previa: datos no respaldados (ámbar), habilidades añadidas por el
+   *  usuario (azul) y reformulaciones (verde). */
   highlightGroups?: HighlightGroup[]
 }
 
@@ -15,6 +16,10 @@ const MARK_STYLES = {
     title: 'No aparece en tu CV original',
     className:
       'rounded bg-amber-200/80 px-0.5 text-inherit underline decoration-amber-500 decoration-wavy underline-offset-4 dark:bg-amber-400/25 dark:text-amber-100',
+  },
+  added: {
+    title: 'Añadido por ti',
+    className: 'rounded bg-sky-100 px-0.5 text-inherit ring-1 ring-sky-300 dark:bg-sky-500/20 dark:text-sky-100 dark:ring-sky-500/40',
   },
   change: {
     title: 'Reformulado respecto a tu CV original',
@@ -35,7 +40,8 @@ export function MarkdownPreview({ markdown, highlightGroups = [] }: MarkdownPrev
         components={{
           a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer nofollow" />,
           mark: ({ node: _node, ...props }) => {
-            const kind = (props as Record<string, unknown>)['data-kind'] === 'change' ? 'change' : 'ungrounded'
+            const raw = (props as Record<string, unknown>)['data-kind']
+            const kind: keyof typeof MARK_STYLES = raw === 'change' || raw === 'added' ? raw : 'ungrounded'
             return <mark {...props} {...MARK_STYLES[kind]} className={`scroll-mt-28 ${MARK_STYLES[kind].className}`} />
           },
         }}

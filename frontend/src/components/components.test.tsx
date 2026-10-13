@@ -1,10 +1,12 @@
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Toaster } from 'react-hot-toast'
 import { describe, expect, it, vi } from 'vitest'
 
 import { useByokKey } from '../hooks/useByokKey'
 import type { OptimizeResponse } from '../types/api'
 import { FileUploader } from './FileUploader'
+import { AtsSuggestions } from './result/AtsSuggestions'
 import { ResultViewer } from './result/ResultViewer'
 
 const RESULT: OptimizeResponse = {
@@ -15,6 +17,7 @@ const RESULT: OptimizeResponse = {
   changes_summary: ['Resumen orientado a backend.'],
   warnings: [],
   changes: [],
+  ats_suggestions: [],
   quality: 'ok',
   meta: {
     mode: 'server',
@@ -158,6 +161,45 @@ ${claim}.`,
     expect(document.querySelector('mark[data-kind="ungrounded"]')).toBeNull()
   })
 
+  it('añade una sugerencia ATS al CV con un clic y se puede quitar', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    const result: OptimizeResponse = {
+      ...RESULT,
+      optimized_markdown: '# Ana García\n\n## Habilidades\n- Python\n- FastAPI',
+      match: { ...RESULT.match, missing_keywords: ['Kubernetes', 'Docker'] },
+      ats_suggestions: ['Kubernetes', 'Docker'],
+    }
+    render(
+      <>
+        <ResultViewer result={result} onReset={() => {}} />
+        <Toaster />
+      </>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Añadir Kubernetes al CV' }))
+
+    // El chip desaparece, la habilidad entra en la sección y se resalta en azul.
+    expect(screen.queryByRole('button', { name: 'Añadir Kubernetes al CV' })).toBeNull()
+    expect(document.querySelector('mark[data-kind="added"]')).toHaveTextContent('Kubernetes')
+    expect(await screen.findByText('Habilidad añadida al currículum')).toBeInTheDocument()
+    // Puntuación recalculada: 3 de 4 palabras clave cubiertas.
+    expect(screen.getByText('75%')).toBeInTheDocument()
+
+    // Copiar (y descargar) usan el CV con la habilidad, sin marcas.
+    await user.click(screen.getByRole('button', { name: /copiar al portapapeles/i }))
+    expect(writeText).toHaveBeenCalledWith('# Ana García\n\n## Habilidades\n- Python\n- FastAPI\n- Kubernetes')
+
+    await user.click(screen.getByRole('button', { name: 'Quitar Kubernetes del CV' }))
+    expect(screen.getByRole('button', { name: 'Añadir Kubernetes al CV' })).toBeInTheDocument()
+    expect(document.querySelector('mark[data-kind="added"]')).toBeNull()
+  })
+
+  it('no muestra el panel de sugerencias si no hay ninguna', () => {
+    render(<ResultViewer result={RESULT} onReset={() => {}} />)
+    expect(screen.queryByText('Sugerencias ATS')).toBeNull()
+  })
+
   it('ofrece la descarga en Word, PDF y Markdown', async () => {
     const user = userEvent.setup()
     render(<ResultViewer result={RESULT} onReset={() => {}} />)
@@ -194,6 +236,17 @@ ${claim}.`,
 
     expect(execCommand).toHaveBeenCalledWith('copy')
     expect(await screen.findByText('¡Copiado!')).toBeInTheDocument()
+  })
+})
+
+describe('AtsSuggestions', () => {
+  it('no permite añadir mientras está desactivado', async () => {
+    const user = userEvent.setup()
+    const onAdd = vi.fn()
+    render(<AtsSuggestions suggestions={['SAP']} added={[]} onAdd={onAdd} onRemove={() => {}} disabled />)
+
+    await user.click(screen.getByRole('button', { name: 'Añadir SAP al CV' }))
+    expect(onAdd).not.toHaveBeenCalled()
   })
 })
 

@@ -432,3 +432,13 @@ def test_score_ignores_generic_words_and_soft_skills(client, groq_mock):
     # Las 4 que tenía el CV se mantienen; faltan Excel medio y Carnet de conducir (no inventados).
     assert match["score_before"] == match["score_after"]
     assert set(match["missing_keywords"]) == {"Excel medio", "Carnet de conducir"}
+
+
+def test_response_includes_ats_suggestions(client, groq_mock):
+    groq_mock.post("/chat/completions").mock(return_value=admin_payload(ADMIN_FAITHFUL))
+
+    body = post_admin(client).json()
+
+    # Requisitos verificables que el CV no tiene; nunca rasgos personales.
+    assert body["ats_suggestions"] == ["Excel medio", "Carnet de conducir"]
+    assert not set(ADMIN_SOFT) & set(body["ats_suggestions"])
