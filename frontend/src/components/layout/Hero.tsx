@@ -37,7 +37,7 @@ export function Hero() {
           </a>
           <p className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
             <LockKeyhole className="size-4 shrink-0" aria-hidden />
-            Tu PDF se procesa en memoria y no se guarda.
+            Tu PDF se procesa en memoria y no se guarda en ningún servidor.
           </p>
         </div>
       </div>

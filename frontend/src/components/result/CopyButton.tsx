@@ -3,7 +3,15 @@ import { Check, Copy } from 'lucide-react'
 import { useCopyToClipboard } from '../../hooks/useCopyToClipboard'
 import { cn } from '../../lib/format'
 
-export function CopyButton({ text, className }: { text: string; className?: string }) {
+export function CopyButton({
+  text,
+  className,
+  label = 'Copiar al portapapeles',
+}: {
+  text: string
+  className?: string
+  label?: string
+}) {
   const { copy, state } = useCopyToClipboard()
   const copied = state === 'copied'
 
@@ -30,7 +38,7 @@ export function CopyButton({ text, className }: { text: string; className?: stri
         />
       </span>
       <span aria-live="polite">
-        {copied ? '¡Copiado!' : state === 'error' ? 'No se pudo copiar' : 'Copiar al portapapeles'}
+        {copied ? '¡Copiado!' : state === 'error' ? 'No se pudo copiar' : label}
       </span>
     </button>
   )

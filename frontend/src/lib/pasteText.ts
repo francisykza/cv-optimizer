@@ -1,5 +1,7 @@
 // Utilidades puras del "textarea inteligente" de la oferta (pegar texto, enlaces o capturas).
 
+import { stripConsentNoise } from './consentFilter'
+
 /** Límite del texto pegado: protege el límite de tokens por minuto (TPM) de Groq. */
 export const PASTE_MAX_CHARS = 10_000
 
@@ -16,14 +18,19 @@ export function isSingleUrl(text: string): boolean {
   }
 }
 
-/** Limpia texto copiado de una web con Ctrl+A: espacios repetidos, líneas en blanco múltiples,
- *  tabulaciones y espacios de ancho cero. El ruido de menús y pies lo ignora el LLM (prompt v4). */
+/** Limpia texto copiado de una web con Ctrl+A: banners de cookies, espacios repetidos, líneas en
+ *  blanco múltiples, tabulaciones y espacios de ancho cero. El ruido de menús y pies lo ignora el
+ *  LLM (prompt v4 y siguientes). */
 export function cleanPastedText(text: string): string {
+  return stripConsentNoise(normalizeWhitespace(text))
+}
+
+function normalizeWhitespace(text: string): string {
   return text
     .replace(/\r\n?/g, '\n')
-    .replace(/[​-‍﻿]/g, '')
+    .replace(/[\u200b-\u200d\ufeff]/g, '')
     .split('\n')
-    .map((line) => line.replace(/[ \t ]+/g, ' ').trim())
+    .map((line) => line.replace(/[ \t\u00a0]+/g, ' ').trim())
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()

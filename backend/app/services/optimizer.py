@@ -23,7 +23,7 @@ from app.services.change_detector import detect_changes
 from app.services.llm.base import ChatMessage, LLMProvider, LLMRequest, LLMResponse, Mode
 from app.services.output_validator import OutputValidator, ValidationReport
 from app.services.pdf_extractor import PdfExtractor
-from app.services.prompt_builder import OutputLanguage, PromptBuilder
+from app.services.prompt_builder import AdjustmentLevel, OutputLanguage, PromptBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +65,14 @@ class OptimizerService:
         job_offer: str,
         language: OutputLanguage,
         provider: LLMProvider,
+        adjustment: AdjustmentLevel = "deep",
         mode: Mode,
         request_id: str | None,
     ) -> OptimizeResponse:
         start = time.perf_counter()
         extracted = await self.extract_text(pdf_bytes)
 
-        prompt = self._prompts.build(extracted.text, job_offer, language)
+        prompt = self._prompts.build(extracted.text, job_offer, language, adjustment)
         messages = [ChatMessage("system", prompt.system), ChatMessage("user", prompt.user)]
         output, responses = await self._complete_json(provider, messages)
 
@@ -83,7 +84,7 @@ class OptimizerService:
 
         # Capa 4 del SDD: validación determinista + una corrección si hay datos no respaldados o
         # si la optimización ha quitado términos de la oferta que el candidato ya tenía.
-        report = self._validator.validate(output.optimized_markdown, extracted.text, keywords)
+        report = self._validate(output, extracted.text, keywords)
         dropped = match_scorer.dropped_keywords(keywords, extracted.text, output.optimized_markdown)
         first_ungrounded, first_dropped = report.ungrounded_count, len(dropped)
         corrections = 0
@@ -96,7 +97,7 @@ class OptimizerService:
                 break
             new_output, new_responses = corrected
             responses += new_responses
-            new_report = self._validator.validate(new_output.optimized_markdown, extracted.text, keywords)
+            new_report = self._validate(new_output, extracted.text, keywords)
             new_dropped = match_scorer.dropped_keywords(
                 keywords, extracted.text, new_output.optimized_markdown
             )
@@ -151,6 +152,7 @@ class OptimizerService:
         return OptimizeResponse(
             request_id=request_id,
             optimized_markdown=output.optimized_markdown.strip(),
+            application_pitch=output.application_pitch,
             match=match,
             gaps=output.gaps,
             changes_summary=output.changes_summary,
@@ -168,6 +170,11 @@ class OptimizerService:
                 pdf_pages=extracted.pages,
             ),
         )
+
+    def _validate(self, output: LLMOptimizeOutput, source_cv: str, keywords: list[str]) -> ValidationReport:
+        report = self._validator.validate(output.optimized_markdown, source_cv, keywords)
+        report.warnings += self._validator.validate_pitch(output.application_pitch, source_cv, keywords)
+        return report
 
     async def _correct(
         self,

@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '../lib/constants'
 import type {
+  AdjustmentLevel,
   ApiErrorBody,
   HealthResponse,
   KeyValidationResponse,
@@ -23,6 +24,16 @@ export class ApiError extends Error {
   }
 }
 
+// Cualquier respuesta del backend (aunque sea un error 4xx de validación) demuestra que está vivo.
+// El indicador de la cabecera se suscribe para no quedarse en "no disponible" cuando la app ya
+// está funcionando (p. ej. tras un arranque en frío de Render más largo de lo previsto).
+const reachableListeners = new Set<() => void>()
+
+export function onServerReachable(listener: () => void): () => void {
+  reachableListeners.add(listener)
+  return () => reachableListeners.delete(listener)
+}
+
 async function request<T>(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
   const { timeoutMs = 15_000, signal, ...rest } = init
   const timeout = AbortSignal.timeout(timeoutMs)
@@ -43,6 +54,7 @@ async function request<T>(path: string, init: RequestInit & { timeoutMs?: number
     )
   }
 
+  reachableListeners.forEach((listener) => listener())
   const body: unknown = await response.json().catch(() => null)
   if (!response.ok) {
     const error = (body as ApiErrorBody | null)?.error
@@ -76,15 +88,24 @@ export interface OptimizeParams {
   file: File
   jobOffer: string
   language: OutputLanguage
+  adjustment?: AdjustmentLevel
   apiKey?: string
   signal?: AbortSignal
 }
 
-export function optimizeCv({ file, jobOffer, language, apiKey, signal }: OptimizeParams): Promise<OptimizeResponse> {
+export function optimizeCv({
+  file,
+  jobOffer,
+  language,
+  adjustment = 'deep',
+  apiKey,
+  signal,
+}: OptimizeParams): Promise<OptimizeResponse> {
   const form = new FormData()
   form.append('cv_file', file, file.name)
   form.append('job_offer', jobOffer)
   form.append('output_language', language)
+  form.append('adjustment_level', adjustment)
 
   return request<OptimizeResponse>('/api/v1/optimize', {
     method: 'POST',

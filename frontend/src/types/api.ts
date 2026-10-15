@@ -2,6 +2,9 @@
 
 export type OutputLanguage = 'auto' | 'es' | 'en'
 
+/** Sutil: solo palabras clave, frases intactas. Profundo: reescribe el enfoque y los logros. */
+export type AdjustmentLevel = 'subtle' | 'deep'
+
 export interface MatchReport {
   score_before: number
   score_after: number
@@ -42,6 +45,8 @@ export interface ValidationWarning {
 export interface OptimizeResponse {
   request_id: string | null
   optimized_markdown: string
+  /** Pitch de candidatura en Markdown ("" si el modelo no lo generó). */
+  application_pitch: string
   match: MatchReport
   gaps: string[]
   changes_summary: string[]
@@ -60,7 +65,6 @@ export const UNGROUNDED_CODES: ReadonlySet<WarningCode> = new Set([
   'UNGROUNDED_METRIC',
   'UNGROUNDED_ENTITY',
   'UNGROUNDED_SKILL',
-  'UNGROUNDED_CLAIM',
   'GAP_LEAKED',
 ])
 

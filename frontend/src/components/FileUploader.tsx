@@ -1,14 +1,24 @@
-import { CheckCircle2, CloudUpload, FileText, TriangleAlert, X } from 'lucide-react'
+import { CheckCircle2, CloudUpload, FileText, HardDrive, TriangleAlert, X } from 'lucide-react'
 import { useId, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 
+import type { CvMemoryStatus } from '../hooks/useCvMemory'
 import { MAX_PDF_BYTES, MAX_PDF_MB } from '../lib/constants'
 import { cn, formatBytes } from '../lib/format'
 import { SectionCard } from './ui/SectionCard'
+
+export interface CvMemoryControls {
+  remember: boolean
+  status: CvMemoryStatus
+  onRememberChange: (remember: boolean) => void
+  onForget: () => void
+}
 
 interface FileUploaderProps {
   file: File | null
   onFileChange: (file: File | null) => void
   disabled?: boolean
+  /** Memoria local opcional del CV (desactivada por defecto). */
+  memory?: CvMemoryControls
 }
 
 export function validatePdf(file: File): string | null {
@@ -19,7 +29,7 @@ export function validatePdf(file: File): string | null {
   return null
 }
 
-export function FileUploader({ file, onFileChange, disabled }: FileUploaderProps) {
+export function FileUploader({ file, onFileChange, disabled, memory }: FileUploaderProps) {
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -95,16 +105,41 @@ export function FileUploader({ file, onFileChange, disabled }: FileUploaderProps
             {file.name}
           </p>
           <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
-            {formatBytes(file.size)} · Listo para optimizar
+            {formatBytes(file.size)}, listo para optimizar
           </p>
-          <button
-            type="button"
-            onClick={openPicker}
-            disabled={disabled}
-            className="focus-ring mt-4 rounded-md text-sm font-medium text-cobalt-600 underline-offset-4 hover:underline disabled:opacity-50 dark:text-cobalt-400"
-          >
-            Cambiar archivo
-          </button>
+          {memory && <MemoryStatus status={memory.status} />}
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+            <button
+              type="button"
+              onClick={openPicker}
+              disabled={disabled}
+              className="focus-ring rounded-md text-sm font-medium text-cobalt-600 underline-offset-4 hover:underline disabled:opacity-50 dark:text-cobalt-400"
+            >
+              Cambiar archivo
+            </button>
+            {memory?.remember && (
+              <button
+                type="button"
+                onClick={memory.onForget}
+                disabled={disabled}
+                className="focus-ring rounded-md text-sm font-medium text-slate-600 underline-offset-4 hover:text-rose-700 hover:underline disabled:opacity-50 dark:text-slate-400 dark:hover:text-rose-400"
+              >
+                Olvidar memoria local
+              </button>
+            )}
+          </div>
+          {memory && (
+            <label className="mt-4 inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={memory.remember}
+                onChange={(e) => memory.onRememberChange(e.target.checked)}
+                disabled={disabled}
+                className="size-4 rounded border-slate-400 accent-cobalt-600"
+              />
+              Recordar mi CV en este navegador
+            </label>
+          )}
         </div>
       ) : (
         <div
@@ -163,5 +198,27 @@ export function FileUploader({ file, onFileChange, disabled }: FileUploaderProps
         </p>
       )}
     </SectionCard>
+  )
+}
+
+const MEMORY_TEXT: Record<Exclude<CvMemoryStatus, 'off'>, string> = {
+  saved: 'Guardado en este navegador',
+  restored: 'Recuperado de este navegador',
+  error: 'Este navegador no permite guardarlo (¿modo privado?)',
+}
+
+function MemoryStatus({ status }: { status: CvMemoryStatus }) {
+  if (status === 'off') return null
+  return (
+    <p
+      role="status"
+      className={cn(
+        'mt-1.5 flex items-center gap-1.5 text-xs',
+        status === 'error' ? 'text-amber-700 dark:text-amber-400' : 'text-slate-600 dark:text-slate-400',
+      )}
+    >
+      <HardDrive className="size-3.5" aria-hidden />
+      {MEMORY_TEXT[status]}
+    </p>
   )
 }

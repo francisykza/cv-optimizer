@@ -14,8 +14,26 @@ export function containsSkill(markdown: string, skill: string): boolean {
   return buildTermsRegExp([skill])?.test(markdown) ?? false
 }
 
+/** Etiqueta corta de un requisito: "Inglés C1 (el CV indica B2)" -> "Inglés C1". */
+export function gapLabel(gap: string): string {
+  return gap.replace(/\s*\([^)]*\)/g, '').replace(/[.:;]+$/, '').trim()
+}
+
+/** Texto que se añade al CV cuando el usuario confirma que tiene experiencia en un requisito. */
+export function experienceNote(gap: string, note: string): string {
+  return `${gapLabel(gap)}: ${note.trim().replace(/\.$/, '')}`
+}
+
 export function injectSkill(markdown: string, skill: string): string {
-  const term = skill.trim()
+  return inject(markdown, skill.trim(), false)
+}
+
+/** Añade "Requisito: cómo lo usaste" como viñeta propia en la sección de habilidades. */
+export function injectExperience(markdown: string, gap: string, note: string): string {
+  return inject(markdown, experienceNote(gap, note), true)
+}
+
+function inject(markdown: string, term: string, asListItem: boolean): string {
   if (!term || containsSkill(markdown, term)) return markdown
 
   const lines = markdown.split('\n')
@@ -45,6 +63,9 @@ export function injectSkill(markdown: string, skill: string): string {
   } else if (LIST_ITEM.test(lines[last])) {
     const marker = lines[last].match(LIST_ITEM)![1]
     lines.splice(last + 1, 0, `${marker} ${term}`)
+  } else if (asListItem) {
+    // Una frase no cabe en una lista separada por comas: va en su propia viñeta.
+    lines.splice(last + 1, 0, '', `- ${term}`)
   } else {
     // Párrafo con habilidades separadas por comas ("Excel, Word, Contanet.").
     lines[last] = `${lines[last].replace(/[.;]?\s*$/, '')}, ${term}`

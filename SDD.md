@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.5.0 |
+| **Versión** | 1.6.0 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -22,6 +22,7 @@
 | 1.3.0 | 2026-10-13 | Sugerencias ATS que el usuario añade con un clic (`ats_suggestions`, §9.7, ADR-008); notificaciones con `react-hot-toast`. |
 | 1.4.0 | 2026-10-13 | Textarea inteligente de la oferta (§9.8): enlace vía `POST /api/v1/extract-job-url` (Jina Reader), capturas con OCR en el navegador (tesseract.js) y limpieza del texto copiado; prompt v4 (ignorar el ruido de la web); hasta 6 sugerencias ATS; ADR-009. |
 | 1.5.0 | 2026-10-15 | Rediseño visual "la mesa del corrector" (§9.5): paleta de papel, tinta y rotuladores, IBM Plex Sans/Serif y portada con demo animada en lugar del kit genérico de tarjetas. |
+| 1.6.0 | 2026-10-15 | Resumen reescribible (`UNGROUNDED_CLAIM` pasa a informativo), filtro de banners de cookies en frontend y backend, nivel de ajuste sutil/profundo, pitch de candidatura (`application_pitch`) validado, memoria local opcional del CV, experiencia del usuario en los requisitos que faltan e indicador del servidor tolerante; prompt v5; ADR-010. |
 
 ---
 
@@ -707,7 +708,8 @@ Es un componente **determinista** que contrasta el Markdown generado con el text
 | **Skills** | Cada ítem de la sección Habilidades debe aparecer en el CV (o en un diccionario de sinónimos permitidos: `js↔javascript`, `k8s↔kubernetes`, `postgres↔postgresql`…). Los calificativos añadidos ("Inglés nativo" frente a "B2") se detectan. | `warning: UNGROUNDED_SKILL` |
 | **Gaps filtrados** | Keywords de la oferta que **no** están en el CV original (cobertura del 100 %) pero **sí** en el CV optimizado. Se excluyen del match score. | `warning: GAP_LEAKED` |
 | **Estructura** | Longitud razonable (el output no supera 1,6 veces el CV + 400 caracteres) y sin tablas, imágenes ni HTML. | `warning: FORMAT` |
-| **Afirmaciones del resumen** | En las secciones de resumen o perfil, cada cláusula (separada por puntuación) con al menos 3 palabras con contenido debe tener al menos 1/5 de ellas respaldadas por el CV. Las cualidades inventadas ("orientada a resultados") no comparten nada con el CV; reformular hechos reales sí se ancla ("bases de datos **PostgreSQL**"). El prompt v2 lo prohíbe también de forma explícita. | `warning: UNGROUNDED_CLAIM` |
+| **Afirmaciones del resumen** | En las secciones de resumen o perfil, cada cláusula (separada por puntuación) con al menos 3 palabras con contenido debe tener al menos 1/5 de ellas respaldadas por el CV. Las cualidades inventadas ("orientada a resultados") no comparten nada con el CV; reformular hechos reales sí se ancla ("bases de datos **PostgreSQL**"). **Desde la v1.6 es informativo:** el resumen puede reescribirse con el vocabulario de la oferta, así que se avisa al usuario, pero no fuerza la corrección ni marca el CV como "revisar". | `warning: UNGROUNDED_CLAIM` (informativo) |
+| **Pitch de candidatura** | El pitch se valida por datos duros: años, cifras, contacto y requisitos de la oferta que el CV no acredita. Lo no respaldado entra en la misma corrección automática que el CV y cuenta para "revisar". Los avisos llevan el prefijo "En el pitch:". | Mismos códigos que el CV |
 | **CV traducido** | Si el idioma del output difiere del original (heurística de *stopwords*), se omiten las comprobaciones de entidades y skills, que dependen del idioma, y se avisa. Fechas, cifras, contacto y gaps se siguen validando. | `warning: LIMITED_CHECK` |
 
 **Política de severidad:**
@@ -864,6 +866,7 @@ El mensaje de `JOB_URL_UNREADABLE` indica qué hacer: "Este portal bloquea enlac
 | `cv_file` | file | Sí | `application/pdf`, magic bytes `%PDF-`, ≤ `MAX_UPLOAD_MB`, ≤ `MAX_PDF_PAGES` |
 | `job_offer` | string | Sí | 200 a 15 000 caracteres tras el `strip` |
 | `output_language` | `auto` \| `es` \| `en` | No (`auto`) | Enum |
+| `adjustment_level` | `subtle` \| `deep` | No (`deep`) | Enum. Sutil: frases intactas y solo palabras clave. Profundo: enfoque, verbos de acción y logros `[Acción] + [Herramienta] + [Resultado]`, con el resultado solo si está en el CV. |
 | `X-User-API-Key` | header | No | 20 a 300 caracteres imprimibles. Su presencia activa BYOK. |
 | `X-LLM-Provider` | header | Si hay BYOK | `groq` \| `openai` \| `anthropic` |
 | `X-LLM-Model` | header | No | Debe estar en el catálogo de `providers.yaml` |
@@ -882,6 +885,7 @@ El mensaje de `JOB_URL_UNREADABLE` indica qué hacer: "Este portal bloquea enlac
     "soft_skills": ["proactividad"]
   },
   "ats_suggestions": ["Kubernetes", "Terraform"],
+  "application_pitch": "Desarrolladora backend con Python y FastAPI...\n\n- APIs REST con FastAPI.\n- ...",
   "gaps": [
     "La oferta pide experiencia con Kubernetes; no aparece en el CV.",
     "Se requiere inglés C1; el CV indica B2."
@@ -1193,7 +1197,28 @@ Un único campo acepta la oferta en tres formas. El `textarea` intercepta `onPas
   - La CSP de `vercel.json` permite exactamente eso: `script-src` y `connect-src` con `cdn.jsdelivr.net`, `'wasm-unsafe-eval'` y `worker-src blob:`.
 - **Mientras se lee un enlace o una captura:** el `textarea` queda en solo lectura, se ignoran nuevos pegados y el botón de optimizar se desactiva.
 
-### 9.9 Dependencias principales (frontend)
+### 9.9 Interacción avanzada (v1.6)
+
+- **Filtro de cookies:**
+  - `consentFilter.ts` (frontend) y `consent_filter.py` (backend) descartan las líneas de banners RGPD.
+  - Las detectan por expresiones inequívocas ("we and our 1037 partners", "legitimate interest", "utilizamos cookies") o por acumulación de vocabulario de consentimiento.
+  - Se aplica al pegar, antes de enviar, en el backend y al leer una URL. Una oferta que trata de RGPD como materia no se filtra.
+- **Nivel de ajuste:** selector "Sutil / Profundo" junto al idioma, que se envía como `adjustment_level` y cambia un bloque del prompt v5.
+- **Pitch de candidatura:**
+  - Tercera pestaña, "Pitch para la oferta", con su propio botón de copiar.
+  - Se oculta si el modelo no lo genera.
+- **Memoria local del CV (opcional, ADR-010):**
+  - Casilla "Recordar mi CV en este navegador", desactivada por defecto.
+  - Guarda el PDF en IndexedDB, muestra "Guardado en este navegador" o "Recuperado de este navegador" y ofrece "Olvidar memoria local".
+  - Quitar el archivo también borra la memoria.
+- **"Sí tengo experiencia en esto":**
+  - Cada requisito que falta admite una frase del usuario, que se añade al CV como viñeta "Requisito: frase" en Habilidades, resaltada en azul.
+  - La puntuación se recalcula en el cliente con cualquier palabra clave de la oferta que haya pasado a estar presente.
+  - El requisito y la sugerencia ATS equivalente desaparecen.
+  - El CV sigue derivándose del Markdown del servidor, así que quitar la frase lo deshace.
+- **Indicador del servidor tolerante:** cualquier respuesta del backend (también un 4xx) marca "Servidor operativo". La cabecera ya no se queda en "no disponible" cuando un arranque en frío supera los 2 minutos y la app funciona.
+
+### 9.10 Dependencias principales (frontend)
 
 | Paquete | Uso |
 |---|---|
@@ -1437,6 +1462,23 @@ docker compose up --build
   - (−) Dependencia de un servicio externo gratuito con límite por IP (configurable con `JINA_API_KEY`).
   - (−) La detección de muros es heurística.
   - (−) La primera captura descarga unos pocos MB (motor y modelos de idioma) desde jsDelivr.
+
+### ADR-010: Flexibilizar el estilo, no los hechos, y memoria local opcional
+
+- **Contexto:**
+  - El SDD 2.5 pedía relajar el validador porque "la compatibilidad no sube".
+  - El análisis mostró que la puntuación solo sube cuando el CV contiene requisitos de la oferta. Los que faltan solo podrían añadirse inventándolos.
+  - También pedía guardar automáticamente el CV en el navegador.
+- **Decisión** (tomada con el autor):
+  - El resumen puede reescribirse y `UNGROUNDED_CLAIM` pasa a informativo.
+  - Siguen bloqueándose empresas, fechas, titulaciones, cifras y habilidades nuevas.
+  - Para subir la puntuación con verdad, el usuario aporta lo que sí tiene: sugerencias ATS y "Sí tengo experiencia en esto".
+  - La memoria del CV es opt-in y usa IndexedDB, porque el backend necesita el PDF y `localStorage` no admite 5 MB.
+- **Consecuencias:**
+  - (+) La regla de no inventar se mantiene para los datos verificables.
+  - (+) Lo añadido por el usuario queda marcado como suyo.
+  - (+) En un ordenador compartido no queda un CV guardado sin querer.
+  - (−) El resumen puede contener cualidades que el CV no demuestra: se avisan, pero no se corrigen solas.
 
 ---
 

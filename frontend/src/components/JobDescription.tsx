@@ -4,7 +4,7 @@ import { useEffect, useId } from 'react'
 import { type SmartPasteState, useSmartPaste } from '../hooks/useSmartPaste'
 import { JOB_OFFER_MAX_CHARS, JOB_OFFER_MIN_CHARS } from '../lib/constants'
 import { cn, formatNumber } from '../lib/format'
-import type { OutputLanguage } from '../types/api'
+import type { AdjustmentLevel, OutputLanguage } from '../types/api'
 import { SectionCard } from './ui/SectionCard'
 
 interface JobDescriptionProps {
@@ -12,6 +12,8 @@ interface JobDescriptionProps {
   onChange: (value: string) => void
   language: OutputLanguage
   onLanguageChange: (value: OutputLanguage) => void
+  adjustment?: AdjustmentLevel
+  onAdjustmentChange?: (value: AdjustmentLevel) => void
   disabled?: boolean
   /** Avisa mientras se lee un enlace o una captura (para bloquear el botón de optimizar). */
   onBusyChange?: (busy: boolean) => void
@@ -23,14 +25,27 @@ const LANGUAGES: { value: OutputLanguage; label: string }[] = [
   { value: 'en', label: 'Inglés' },
 ]
 
+const ADJUSTMENTS: { value: AdjustmentLevel; label: string; hint: string }[] = [
+  {
+    value: 'deep',
+    label: 'Profundo',
+    hint: 'Reescribe el enfoque: verbos de acción y logros con lo que ya pone tu CV.',
+  },
+  { value: 'subtle', label: 'Sutil', hint: 'Mantiene tus frases y solo incorpora las palabras clave de la oferta.' },
+]
+
 export function JobDescription({
   value,
   onChange,
   language,
   onLanguageChange,
+  adjustment = 'deep',
+  onAdjustmentChange,
   disabled,
   onBusyChange,
 }: JobDescriptionProps) {
+  const adjustmentId = useId()
+  const adjustmentHintId = useId()
   const paste = useSmartPaste(value, onChange)
   const textareaId = useId()
   const counterId = useId()
@@ -100,26 +115,48 @@ export function JobDescription({
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <label htmlFor={languageId} className="text-sm text-slate-600 dark:text-slate-400">
-            Idioma del CV
-          </label>
-          <select
-            id={languageId}
-            value={language}
-            onChange={(e) => onLanguageChange(e.target.value as OutputLanguage)}
-            disabled={disabled}
-            className="focus-ring h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900"
-          >
-            {LANGUAGES.map((l) => (
-              <option key={l.value} value={l.value}>
-                {l.label}
-              </option>
-            ))}
-          </select>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div className="flex items-center gap-2">
+            <label htmlFor={languageId} className="text-sm text-slate-600 dark:text-slate-400">
+              Idioma del CV
+            </label>
+            <select
+              id={languageId}
+              value={language}
+              onChange={(e) => onLanguageChange(e.target.value as OutputLanguage)}
+              disabled={disabled}
+              className="focus-ring h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900"
+            >
+              {LANGUAGES.map((l) => (
+                <option key={l.value} value={l.value}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {onAdjustmentChange && (
+            <div className="flex items-center gap-2">
+              <label htmlFor={adjustmentId} className="text-sm text-slate-600 dark:text-slate-400">
+                Nivel de ajuste
+              </label>
+              <select
+                id={adjustmentId}
+                value={adjustment}
+                onChange={(e) => onAdjustmentChange(e.target.value as AdjustmentLevel)}
+                disabled={disabled}
+                aria-describedby={adjustmentHintId}
+                className="focus-ring h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900"
+              >
+                {ADJUSTMENTS.map((a) => (
+                  <option key={a.value} value={a.value}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
-
         <p
           id={counterId}
           aria-live="polite"
@@ -133,6 +170,11 @@ export function JobDescription({
             : `${formatNumber(length)} / ${formatNumber(JOB_OFFER_MAX_CHARS)}`}
         </p>
       </div>
+      {onAdjustmentChange && (
+        <p id={adjustmentHintId} className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          {ADJUSTMENTS.find((a) => a.value === adjustment)?.hint}
+        </p>
+      )}
     </SectionCard>
   )
 }

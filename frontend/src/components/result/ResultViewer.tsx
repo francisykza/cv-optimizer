@@ -1,21 +1,23 @@
-import { Code2, Eye, Lightbulb, RotateCcw, ShieldAlert } from 'lucide-react'
+import { Code2, Eye, Lightbulb, Mail, RotateCcw, ShieldAlert } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { cn, formatNumber } from '../../lib/format'
-import { injectSkill } from '../../lib/injectSkill'
+import { containsSkill, experienceNote, gapLabel, injectExperience, injectSkill } from '../../lib/injectSkill'
 import type { HighlightGroup } from '../../lib/rehypeHighlightTerms'
 import { UNGROUNDED_CODES, type MatchReport, type OptimizeResponse } from '../../types/api'
 import { AtsSuggestions } from './AtsSuggestions'
 import { CopyButton } from './CopyButton'
 import { DownloadMenu } from './DownloadMenu'
+import { type ExperienceNote, GapList } from './GapList'
 import { InsightList } from './InsightList'
 import { KeywordList } from './KeywordList'
 import { MarkdownPreview } from './MarkdownPreview'
 import { MatchScoreCard } from './MatchScoreCard'
+import { PitchPanel } from './PitchPanel'
 import { WarningsPanel } from './WarningsPanel'
 
-type Tab = 'preview' | 'markdown'
+type Tab = 'preview' | 'markdown' | 'pitch'
 
 interface ResultViewerProps {
   result: OptimizeResponse
@@ -28,25 +30,40 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
   // Habilidades sugeridas que el usuario ha decidido añadir. El CV visible se deriva del Markdown
   // del servidor: quitar una es volver a calcularlo sin ella, sin riesgo de corromper el texto.
   const [added, setAdded] = useState<string[]>([])
+  // Requisitos de la oferta en los que el usuario declara experiencia real, con su explicación.
+  const [notes, setNotes] = useState<ExperienceNote[]>([])
   const previewRef = useRef<HTMLDivElement>(null)
   const { meta } = result
+  const base = result.optimized_markdown
+  const pitch = result.application_pitch?.trim() ?? ''
 
-  const markdown = useMemo(() => added.reduce(injectSkill, result.optimized_markdown), [added, result.optimized_markdown])
-  const suggestions = (result.ats_suggestions ?? []).filter((s) => !added.includes(s))
-  const match = useMemo(() => withAddedSkills(result.match, added), [result.match, added])
+  const markdown = useMemo(
+    () => notes.reduce((md, n) => injectExperience(md, n.gap, n.note), added.reduce(injectSkill, base)),
+    [added, notes, base],
+  )
+  /** Algo que no estaba en el CV del servidor y ahora sí: solo puede haberlo añadido el usuario. */
+  const addedByUser = (term: string) => !containsSkill(base, term) && containsSkill(markdown, term)
+  const suggestions = (result.ats_suggestions ?? []).filter((s) => !addedByUser(s))
+  const gaps = result.gaps.filter((g) => !notes.some((n) => n.gap === g) && !addedByUser(gapLabel(g)))
+  const match = useMemo(() => withUserAdditions(result.match, base, markdown), [result.match, base, markdown])
 
   const handleAddSkill = (skill: string) => {
     setAdded((prev) => (prev.includes(skill) ? prev : [...prev, skill]))
     toast.success('Habilidad añadida al currículum')
   }
   const handleRemoveSkill = (skill: string) => setAdded((prev) => prev.filter((s) => s !== skill))
+  const handleAddNote = (note: ExperienceNote) => {
+    setNotes((prev) => [...prev.filter((n) => n.gap !== note.gap), note])
+    toast.success('Experiencia añadida al currículum')
+  }
+  const handleRemoveNote = (gap: string) => setNotes((prev) => prev.filter((n) => n.gap !== gap))
 
   const ungrounded = result.warnings.filter((w) => UNGROUNDED_CODES.has(w.code))
   const changes = result.changes ?? []
   // Solo para la vista previa: copiar y descargar usan siempre el Markdown sin marcas.
   const highlightGroups: HighlightGroup[] = [
     { kind: 'ungrounded', terms: ungrounded.map((w) => w.term).filter((t): t is string => Boolean(t)) },
-    { kind: 'added', terms: added },
+    { kind: 'added', terms: [...added, ...notes.map((n) => experienceNote(n.gap, n.note))] },
     ...(showChanges ? [{ kind: 'change' as const, terms: changes }] : []),
   ]
 
@@ -106,13 +123,16 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="card overflow-hidden">
           <div className="flex flex-wrap items-end justify-between gap-x-4 border-b border-slate-200 px-3 pt-3 dark:border-slate-800">
-          <div role="tablist" aria-label="Formato del resultado" className="flex gap-1">
+          <div role="tablist" aria-label="Formato del resultado" className="-mb-px flex gap-1 overflow-x-auto">
             {(
               [
-                { id: 'preview', label: 'Vista previa', icon: Eye },
-                { id: 'markdown', label: 'Markdown', icon: Code2 },
+                { id: 'preview', label: 'Vista previa', short: 'Vista previa', icon: Eye },
+                { id: 'markdown', label: 'Markdown', short: 'Markdown', icon: Code2 },
+                { id: 'pitch', label: 'Pitch para la oferta', short: 'Pitch', icon: Mail },
               ] as const
-            ).map(({ id, label, icon: Icon }) => (
+            )
+              .filter(({ id }) => id !== 'pitch' || pitch)
+              .map(({ id, label, short, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
@@ -122,13 +142,15 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
                 aria-controls={`panel-${id}`}
                 onClick={() => setTab(id)}
                 className={cn(
-                  'focus-ring -mb-px inline-flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-2.5 text-sm font-medium transition',
+                  'focus-ring inline-flex shrink-0 items-center gap-2 rounded-t-lg border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition sm:px-4',
                   tab === id
                     ? 'border-cobalt-600 text-cobalt-700 dark:border-cobalt-400 dark:text-cobalt-300'
                     : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200',
                 )}
               >
-                <Icon className="size-4" aria-hidden /> {label}
+                <Icon className="size-4" aria-hidden />
+                <span className="sm:hidden">{short}</span>
+                <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
           </div>
@@ -138,7 +160,9 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
           </div>
 
           <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-            {tab === 'preview' ? (
+            {tab === 'pitch' ? (
+              <PitchPanel pitch={pitch} />
+            ) : tab === 'preview' ? (
               <div className="bg-desk p-3 sm:p-8 dark:bg-slate-950/60">
                 {/* "Hoja" de papel para que se perciba como un documento */}
                 <div
@@ -160,14 +184,8 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
           <AtsSuggestions suggestions={suggestions} added={added} onAdd={handleAddSkill} onRemove={handleRemoveSkill} />
           <WarningsPanel warnings={result.warnings} onLocate={locate} />
           <MatchScoreCard match={match} />
-          <KeywordList match={match} added={added} />
-          <InsightList
-            title="Lo que pide la oferta y no está en tu CV"
-            description="No lo hemos añadido porque no aparece en tu CV original. Si lo tienes, inclúyelo tú mismo."
-            items={result.gaps}
-            icon={ShieldAlert}
-            tone="amber"
-          />
+          <KeywordList match={match} added={match.matched_keywords.filter(addedByUser)} />
+          <GapList gaps={gaps} notes={notes} onAddNote={handleAddNote} onRemoveNote={handleRemoveNote} />
           <InsightList title="Cambios realizados" items={result.changes_summary} icon={Lightbulb} tone="cobalt" />
         </aside>
       </div>
@@ -175,16 +193,18 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
   )
 }
 
-/** Las habilidades que añade el usuario pasan de "faltan" a "cubiertas" y la puntuación se
- *  recalcula igual que en el backend (cubiertas / total). */
-function withAddedSkills(match: MatchReport, added: string[]): MatchReport {
-  if (added.length === 0) return match
+/** Lo que añade el usuario (sugerencias o experiencia) pasa de "falta" a "cubierta" si contiene una
+ *  palabra clave de la oferta, y la puntuación se recalcula igual que en el backend (cubiertas / total). */
+function withUserAdditions(match: MatchReport, base: string, markdown: string): MatchReport {
+  if (markdown === base) return match
   const total = match.matched_keywords.length + match.missing_keywords.length
-  const matched = [...match.matched_keywords, ...match.missing_keywords.filter((kw) => added.includes(kw))]
+  const nowCovered = match.missing_keywords.filter((kw) => !containsSkill(base, kw) && containsSkill(markdown, kw))
+  if (nowCovered.length === 0) return match
+  const matched = [...match.matched_keywords, ...nowCovered]
   return {
     ...match,
     matched_keywords: matched,
-    missing_keywords: match.missing_keywords.filter((kw) => !added.includes(kw)),
+    missing_keywords: match.missing_keywords.filter((kw) => !nowCovered.includes(kw)),
     score_after: total ? Math.round((100 * matched.length) / total) : match.score_after,
   }
 }

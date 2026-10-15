@@ -13,10 +13,12 @@ import { OptimizeButton } from './components/OptimizeButton'
 import { ResultSkeleton } from './components/result/ResultSkeleton'
 import { ResultViewer } from './components/result/ResultViewer'
 import { useByokKey } from './hooks/useByokKey'
+import { useCvMemory } from './hooks/useCvMemory'
 import { useOptimize } from './hooks/useOptimize'
 import { useServerStatus } from './hooks/useServerStatus'
 import { JOB_OFFER_MAX_CHARS, JOB_OFFER_MIN_CHARS } from './lib/constants'
-import type { OutputLanguage } from './types/api'
+import { stripConsentNoise } from './lib/consentFilter'
+import type { AdjustmentLevel, OutputLanguage } from './types/api'
 
 export default function App() {
   const server = useServerStatus()
@@ -26,6 +28,8 @@ export default function App() {
   const [file, setFile] = useState<File | null>(null)
   const [jobOffer, setJobOffer] = useState('')
   const [language, setLanguage] = useState<OutputLanguage>('auto')
+  const [adjustment, setAdjustment] = useState<AdjustmentLevel>('deep')
+  const cvMemory = useCvMemory(file, setFile)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [offerBusy, setOfferBusy] = useState(false)
 
@@ -59,8 +63,10 @@ export default function App() {
     if (!file || disabledReason) return
     void optimize.run({
       file,
-      jobOffer: jobOffer.trim(),
+      // Los banners de cookies no llegan a la API (el backend vuelve a filtrarlos).
+      jobOffer: stripConsentNoise(jobOffer),
       language,
+      adjustment,
       apiKey: hasKey ? byok.apiKey.trim() : undefined,
     })
   }
@@ -113,12 +119,24 @@ export default function App() {
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
-            <FileUploader file={file} onFileChange={setFile} disabled={loading} />
+            <FileUploader
+              file={file}
+              onFileChange={cvMemory.onFileChosen}
+              disabled={loading}
+              memory={{
+                remember: cvMemory.remember,
+                status: cvMemory.status,
+                onRememberChange: cvMemory.setRemember,
+                onForget: cvMemory.forget,
+              }}
+            />
             <JobDescription
               value={jobOffer}
               onChange={setJobOffer}
               language={language}
               onLanguageChange={setLanguage}
+              adjustment={adjustment}
+              onAdjustmentChange={setAdjustment}
               disabled={loading}
               onBusyChange={setOfferBusy}
             />

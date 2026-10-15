@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.core.exceptions import InvalidJobUrlError, JobUrlUnreadableError
+from app.services.consent_filter import strip_consent_noise
 from app.services.text_utils import fold
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ _JINA_HEADER = re.compile(
 _MD_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 _BLANK_LINES = re.compile(r"\n\s*\n(\s*\n)+")
-_SPACES = re.compile(r"[ \t ]+")
+_SPACES = re.compile(r"[ \t\u00a0]+")
 
 # Expresiones propias de una oferta (normalizadas sin tildes). Hacen falta varias distintas.
 _OFFER_MARKERS = (
@@ -68,7 +69,7 @@ def validate_url(url: str) -> str:
 
 
 def clean_text(raw: str, limit: int = MAX_OFFER_CHARS) -> str:
-    text = _JINA_HEADER.sub("", raw)
+    text = strip_consent_noise(_JINA_HEADER.sub("", raw))
     text = _MD_IMAGE.sub("", text)
     text = _MD_LINK.sub(r"\1", text)
     lines = [_SPACES.sub(" ", line).strip() for line in text.replace("\r\n", "\n").split("\n")]

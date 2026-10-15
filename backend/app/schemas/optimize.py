@@ -9,11 +9,18 @@ class LLMOptimizeOutput(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     optimized_markdown: str = Field(min_length=50)
+    # Pitch de candidatura (carta breve para portales de empleo o LinkedIn).
+    application_pitch: str = ""
     job_keywords: list[str] = Field(default_factory=list)
     # Rasgos personales de la oferta ("proactiva"): se muestran aparte y no puntúan.
     soft_skills: list[str] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
     changes_summary: list[str] = Field(default_factory=list)
+
+    @field_validator("application_pitch", mode="before")
+    @classmethod
+    def _clean_pitch(cls, value: object) -> str:
+        return value.strip() if isinstance(value, str) else ""
 
     @field_validator("job_keywords", "soft_skills", "gaps", "changes_summary", mode="before")
     @classmethod
@@ -67,6 +74,8 @@ class OptimizeMeta(BaseModel):
 class OptimizeResponse(BaseModel):
     request_id: str | None
     optimized_markdown: str
+    # Pitch de candidatura en Markdown ("" si el modelo no lo generó).
+    application_pitch: str = ""
     match: MatchReport
     gaps: list[str]
     changes_summary: list[str]

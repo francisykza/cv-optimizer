@@ -10,7 +10,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Python](https://img.shields.io/badge/Python_3.12-3776AB?logo=python&logoColor=white)
 ![Groq](https://img.shields.io/badge/LLM-Groq-F55036)
-![Tests](https://img.shields.io/badge/tests-174_passing-22C55E)
+![Tests](https://img.shields.io/badge/tests-194_passing-22C55E)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/hero-dark.jpg" alt="Página de inicio de CV-Optimizer" width="800" />
@@ -54,7 +54,11 @@
 | **BYOK** (*Bring Your Own Key*) | Introduces tu propia API key de Groq: sin límites, y la clave nunca se guarda. |
 | Exportación para ATS | **DOCX** (recomendado: lo leen todos los ATS, con estilos de título y viñetas nativas de Word) y **PDF** con texto seleccionable, nunca una imagen. Se generan en el navegador, así que el CV no vuelve a subirse. |
 | Oferta en un solo campo | Pega el **texto** (Ctrl+A en la web de la oferta: se limpia solo), el **enlace** (se lee con Jina Reader; si el portal lo bloquea, te dice cómo seguir) o **capturas de pantalla** (OCR en tu navegador: la imagen no se sube a ningún servidor). |
-| Sugerencias ATS | Chips con los requisitos verificables que te faltan (nunca rasgos personales). Al pulsarlos se añaden a la sección de habilidades, resaltados en azul como "Añadido por ti", y la puntuación se recalcula. Se pueden quitar. La decisión es tuya, no de la IA. |
+| Nivel de ajuste | **Sutil** (mantiene tus frases y solo incorpora palabras clave) o **Profundo** (reescribe el enfoque con verbos de acción y logros, sin inventar resultados). |
+| Pitch para la oferta | Tercera pestaña con un mensaje breve (1 párrafo y 3 viñetas) para la carta de presentación de InfoJobs o un mensaje por LinkedIn, validado igual que el CV. |
+| Memoria local (opcional) | "Recordar mi CV en este navegador": el PDF se guarda en tu navegador (IndexedDB), nunca en el servidor, y se puede olvidar con un clic. |
+| Sugerencias ATS | Chips con los requisitos verificables que te faltan (nunca rasgos personales). Al pulsarlos se añaden a la sección de habilidades, resaltados en azul como "Añadido por ti", y la puntuación se recalcula. Se pueden quitar. La decisión es tuya, no de la IA. En los requisitos que faltan, **"Sí tengo experiencia en esto"** te deja explicarlo en una frase y la añade al CV. |
+| Filtro de cookies | Los banners de cookies y consentimiento copiados con la oferta se eliminan antes de enviarla, en el navegador y en el servidor. |
 | Arranque en frío | El frontend "despierta" el backend de Render al cargar la página y avisa si tarda. |
 | Accesibilidad | Navegación por teclado, `aria-live` en los estados de carga y modo oscuro automático. |
 
@@ -78,7 +82,7 @@ El **validador** ([`output_validator.py`](backend/app/services/output_validator.
 | `UNGROUNDED_METRIC` | "reduje la latencia un **45%**" cuando el original dice 30% |
 | `UNGROUNDED_ENTITY` | Empresas, títulos, puestos ("Tech Lead"), emails o URLs que no estaban |
 | `UNGROUNDED_SKILL` | Habilidades añadidas ("Rust") o niveles inflados ("Inglés nativo" en lugar de B2) |
-| `UNGROUNDED_CLAIM` | Afirmaciones del resumen sin apoyo en el CV ("orientada a la mejora continua y al trabajo autónomo") |
+| `UNGROUNDED_CLAIM` | Informativo: afirmaciones del resumen sin apoyo en el CV ("orientada a la mejora continua"). El resumen puede reescribirse con el vocabulario de la oferta, así que se avisa, pero no se fuerza la corrección |
 | `KEYWORD_DROPPED` | Informativo: una palabra clave de la oferta que ya estaba en tu CV y la optimización quitó; antes se intenta recuperar automáticamente |
 | `GAP_LEAKED` | Un requisito de la oferta ("Kubernetes") colado en el CV sin estar en el original |
 
@@ -205,8 +209,8 @@ La lista completa está en [`backend/.env.example`](backend/.env.example) y [`co
 ## Tests y calidad
 
 ```bash
-cd backend && pytest -q && ruff check app tests     # 124 tests
-cd frontend && npm test && npm run build             # 50 tests + typecheck + build
+cd backend && pytest -q && ruff check app tests     # 133 tests
+cd frontend && npm test && npm run build             # 61 tests + typecheck + build
 ```
 
 Qué cubren:

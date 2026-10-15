@@ -38,7 +38,7 @@ export function WarningsPanel({ warnings, onLocate }: WarningsPanelProps) {
         <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
           {limited
             ? 'Fechas, cifras y datos de contacto coinciden con tu CV original.'
-            : 'Fechas, cifras, empresas, títulos, habilidades y el resumen coinciden con tu CV original.'}
+            : 'Fechas, cifras, empresas, títulos y habilidades coinciden con tu CV original.'}
         </p>
         {others.length > 0 && <OtherWarnings warnings={others} />}
       </div>
@@ -60,7 +60,7 @@ export function WarningsPanel({ warnings, onLocate }: WarningsPanelProps) {
       </p>
       <ul className="mt-3 space-y-2">
         {ungrounded.map((w) => (
-          <li key={`${w.code}-${w.term}`}>
+          <li key={`${w.code}-${w.term ?? w.message}`}>
             <button
               type="button"
               onClick={() => w.term && onLocate(w.term)}
@@ -96,7 +96,7 @@ function OtherWarnings({ warnings }: { warnings: ValidationWarning[] }) {
       {warnings.map((w) => {
         const Icon = w.code === 'FORMAT' ? FileWarning : w.code === 'KEYWORD_DROPPED' ? SearchX : Info
         return (
-          <li key={`${w.code}-${w.term}`} className={cn('flex gap-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400')}>
+          <li key={`${w.code}-${w.term ?? w.message}`} className={cn('flex gap-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400')}>
             <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             {w.message}
           </li>

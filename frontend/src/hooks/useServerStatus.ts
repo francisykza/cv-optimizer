@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { checkHealth } from '../services/api'
+import { checkHealth, onServerReachable } from '../services/api'
 
 export type ServerState = 'checking' | 'waking' | 'online' | 'offline'
 
@@ -25,6 +25,7 @@ export function useServerStatus() {
     const controller = new AbortController()
     const start = Date.now()
     let timer: number | undefined
+    let reachable = false // una respuesta real gana a un ping de /health que falle a destiempo
     const wakingTimer = window.setTimeout(
       () => setState((s) => (s === 'checking' ? 'waking' : s)),
       WAKING_THRESHOLD_MS,
@@ -37,7 +38,7 @@ export function useServerStatus() {
         setServerKeyAvailable(health.server_llm_available)
         setState('online')
       } catch {
-        if (controller.signal.aborted) return
+        if (controller.signal.aborted || reachable) return
         const withinBudget = Date.now() - start < WAKE_UP_BUDGET_MS
         setState(withinBudget ? 'waking' : 'offline')
         timer = window.setTimeout(attempt, withinBudget ? RETRY_INTERVAL_MS : OFFLINE_RETRY_INTERVAL_MS)
@@ -45,7 +46,16 @@ export function useServerStatus() {
     }
     void attempt()
 
+    // Una respuesta de cualquier endpoint confirma que el servidor está operativo.
+    const unsubscribe = onServerReachable(() => {
+      reachable = true
+      window.clearTimeout(wakingTimer)
+      window.clearTimeout(timer)
+      setState('online')
+    })
+
     return () => {
+      unsubscribe()
       controller.abort()
       window.clearTimeout(wakingTimer)
       window.clearTimeout(timer)

@@ -18,6 +18,7 @@ const RESULT: OptimizeResponse = {
   warnings: [],
   changes: [],
   ats_suggestions: [],
+  application_pitch: '',
   quality: 'ok',
   meta: {
     mode: 'server',
@@ -126,7 +127,7 @@ describe('ResultViewer', () => {
     expect(writeText).toHaveBeenCalledWith(result.optimized_markdown)
   })
 
-  it('muestra las afirmaciones del resumen sin respaldo como avisos', () => {
+  it('muestra las afirmaciones del resumen sin respaldo como aviso informativo', () => {
     const claim = 'Orientada a la mejora continua'
     const result: OptimizeResponse = {
       ...RESULT,
@@ -134,13 +135,14 @@ describe('ResultViewer', () => {
 
 ## Resumen profesional
 ${claim}.`,
-      warnings: [{ code: 'UNGROUNDED_CLAIM', message: 'x', term: claim, snippet: null }],
-      quality: 'needs_review',
+      warnings: [{ code: 'UNGROUNDED_CLAIM', message: `La afirmación «${claim}» no se apoya en tu CV.`, term: claim, snippet: null }],
     }
     render(<ResultViewer result={result} onReset={() => {}} />)
 
-    expect(screen.getByText('Afirmación')).toBeInTheDocument()
-    expect(document.querySelector('mark[data-kind="ungrounded"]')).toHaveTextContent(claim)
+    // SDD 1.6: el resumen puede reescribirse; se informa, pero no pide revisar ni se marca en ámbar.
+    expect(screen.getByText(/no se apoya en tu CV/)).toBeInTheDocument()
+    expect(screen.getByText('Verificación anti-invención')).toBeInTheDocument()
+    expect(document.querySelector('mark[data-kind="ungrounded"]')).toBeNull()
   })
 
   it('muestra las competencias personales aparte y el aviso de palabra clave perdida', () => {

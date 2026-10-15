@@ -194,7 +194,8 @@ def test_invented_soft_skills_in_summary_are_flagged():
     report = validate(REAL_SUMMARY)
     invented = "Orientada a la mejora continua y al trabajo autónomo en entornos colaborativos"
     assert claims(report) == [invented]
-    assert report.ungrounded_count == 1  # cuenta como dato no respaldado: dispara la corrección
+    # Informativo (SDD 1.6): se avisa, pero no fuerza la corrección ni marca el CV como "revisar".
+    assert report.ungrounded_count == 0
 
 
 def test_rewording_real_facts_in_summary_is_not_flagged():

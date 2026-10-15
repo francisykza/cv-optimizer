@@ -18,7 +18,7 @@ describe('isSingleUrl', () => {
 
 describe('cleanPastedText', () => {
   it('quita espacios repetidos, tabulaciones y líneas en blanco múltiples', () => {
-    const dirty = 'Inicio\t\tEmpleos\r\n\r\n\r\n\r\n  Auxiliar   administrativo  \n\n\n\nRequisitos​'
+    const dirty = 'Inicio\t\tEmpleos\r\n\r\n\r\n\r\n  Auxiliar   administrativo  \n\n\n\nRequisitos\u200b'
     expect(cleanPastedText(dirty)).toBe('Inicio Empleos\n\nAuxiliar administrativo\n\nRequisitos')
   })
 })

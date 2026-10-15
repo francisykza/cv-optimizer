@@ -14,7 +14,7 @@ def test_system_prompt_forbids_inventing():
 def test_system_prompt_ignores_web_noise_in_the_offer():
     """v4: las ofertas pegadas con Ctrl+A o leídas desde una URL traen menús, cookies y pies."""
     prompt = PromptBuilder().build("cv", "oferta", "es")
-    assert prompt.version == "v4"
+    assert prompt.version == "v5"
     assert "IGNORA EL RUIDO DE LA OFERTA" in prompt.system
     assert "cookies" in prompt.system
 

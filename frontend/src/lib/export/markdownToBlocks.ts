@@ -109,7 +109,7 @@ export function suggestedFileName(blocks: Block[]): string {
   const name = h1
     ? plainText(h1.runs)
         .normalize('NFKD')
-        .replace(/[̀-ͯ]/g, '')
+        .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^A-Za-z0-9]+/g, '_')
         .replace(/^_+|_+$/g, '')
         .slice(0, 60)

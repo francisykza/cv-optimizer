@@ -17,11 +17,11 @@ from tests.pdf_factory import SAMPLE_CV_PDF, SAMPLE_JOB_OFFER, make_pdf
 
 
 def post_optimize(client, pdf=SAMPLE_CV_PDF, offer=SAMPLE_JOB_OFFER, headers=None, filename="cv.pdf",
-                  content_type="application/pdf", language="auto"):
+                  content_type="application/pdf", language="auto", extra=None):
     return client.post(
         "/api/v1/optimize",
         files={"cv_file": (filename, pdf, content_type)},
-        data={"job_offer": offer, "output_language": language},
+        data={"job_offer": offer, "output_language": language, **(extra or {})},
         headers=headers or {},
     )
 

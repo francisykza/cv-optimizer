@@ -6,7 +6,7 @@ import unicodedata
 _BULLETS = re.compile(r"^[ \t]*[•▪●◦■□►▸‣∙·–—]+[ \t]*", re.MULTILINE)
 _HYPHEN_BREAK = re.compile(r"(\w)-\n(\w)")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_SPACES = re.compile(r"[ \t ]+")
+_SPACES = re.compile(r"[ \t\u00a0]+")
 _MANY_NEWLINES = re.compile(r"\n{3,}")
 
 

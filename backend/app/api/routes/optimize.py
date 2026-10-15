@@ -20,9 +20,10 @@ from app.core.exceptions import (
 )
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.schemas.optimize import ErrorResponse, OptimizeResponse
+from app.services.consent_filter import strip_consent_noise
 from app.services.llm.factory import check_provider, create_provider, parse_user_key
 from app.services.optimizer import OptimizerService
-from app.services.prompt_builder import OutputLanguage
+from app.services.prompt_builder import AdjustmentLevel, OutputLanguage
 
 router = APIRouter(tags=["optimize"])
 
@@ -54,6 +55,7 @@ async def optimize(
     optimizer: Annotated[OptimizerService, Depends(get_optimizer)],
     limiter: Annotated[SlidingWindowRateLimiter, Depends(get_optimize_limiter)],
     output_language: Annotated[OutputLanguage, Form()] = "auto",
+    adjustment_level: Annotated[AdjustmentLevel, Form(description="subtle | deep")] = "deep",
     x_user_api_key: Annotated[str | None, Header(description="BYOK: clave propia del usuario")] = None,
     x_llm_provider: Annotated[str | None, Header(description="Proveedor BYOK (por ahora: groq)")] = None,
 ) -> OptimizeResponse:
@@ -63,7 +65,8 @@ async def optimize(
     check_provider(x_llm_provider)
     user_key = parse_user_key(x_user_api_key)
 
-    job_offer = job_offer.strip()
+    # Banners de cookies/RGPD copiados con la oferta: gastan tokens y contaminan las keywords.
+    job_offer = strip_consent_noise(job_offer)
     if not settings.job_offer_min_chars <= len(job_offer) <= settings.job_offer_max_chars:
         raise InvalidJobOfferError(
             f"La oferta debe tener entre {settings.job_offer_min_chars} y "
@@ -92,6 +95,7 @@ async def optimize(
         pdf_bytes=pdf_bytes,
         job_offer=job_offer,
         language=output_language,
+        adjustment=adjustment_level,
         provider=provider,
         mode=mode,
         request_id=get_request_id(request),

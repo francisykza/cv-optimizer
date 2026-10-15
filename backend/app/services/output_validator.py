@@ -9,8 +9,10 @@ Comprobaciones:
 - UNGROUNDED_METRIC  cifras y porcentajes que no aparecen en el CV original.
 - UNGROUNDED_ENTITY  empresas, centros, puestos, nombre, emails y URLs no respaldados.
 - UNGROUNDED_SKILL   habilidades listadas que no están en el CV original.
-- UNGROUNDED_CLAIM   afirmaciones del resumen sin apoyo en el CV ("orientada a resultados").
 - GAP_LEAKED         keywords de la oferta que el CV original no tenía y el optimizado sí.
+- UNGROUNDED_CLAIM   afirmaciones del resumen sin apoyo en el CV ("orientada a resultados").
+                     Informativo desde la v1.6 del SDD: el resumen puede reescribirse con el
+                     vocabulario de la oferta, así que no fuerza corrección ni "revisar".
 - FORMAT             tablas, imágenes, HTML o longitud anómala (no cuenta como alucinación).
 - LIMITED_CHECK      el CV se tradujo: se omiten las comprobaciones dependientes del idioma.
 """
@@ -32,7 +34,6 @@ UNGROUNDED_CODES = frozenset(
         "UNGROUNDED_METRIC",
         "UNGROUNDED_ENTITY",
         "UNGROUNDED_SKILL",
-        "UNGROUNDED_CLAIM",
         "GAP_LEAKED",
     }
 )
@@ -198,6 +199,32 @@ class OutputValidator:
         report.leaked_keywords = self._check_gap_leaks(markdown, job_keywords, source, lines, add)
         self._check_format(markdown, source_cv, add)
         return report
+
+    def validate_pitch(self, pitch: str, source_cv: str, job_keywords: list[str]) -> list[ValidationWarning]:
+        """El pitch de candidatura se controla por datos duros: años, cifras, contacto y requisitos
+        de la oferta que el candidato no acredita. No tiene secciones, así que no aplican las
+        comprobaciones de entidades, habilidades ni resumen."""
+        if not pitch.strip():
+            return []
+        source = SourceIndex(source_cv)
+        warnings: list[ValidationWarning] = []
+        seen: set[str] = set()
+
+        def add(code: str, message: str, term: str, line: str | None = None) -> None:
+            key = f"{code}:{fold(term)}"
+            if key in seen or len(warnings) >= self._max_warnings:
+                return
+            seen.add(key)
+            snippet = _clean_markdown(line)[:160] if line else None
+            # Sin `term`: no existe en el CV, así que no hay nada que resaltar en la vista previa.
+            warnings.append(ValidationWarning(code=code, message=f"En el pitch: {message}", snippet=snippet))
+
+        lines = pitch.splitlines()
+        self._check_years(lines, source, add)
+        self._check_numbers(lines, source, add)
+        self._check_contact(lines, source, add)
+        self._check_gap_leaks(pitch, job_keywords, source, lines, add)
+        return warnings
 
     # --- Comprobaciones ---------------------------------------------------------------------
 
