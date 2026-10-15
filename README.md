@@ -13,7 +13,7 @@
 ![Tests](https://img.shields.io/badge/tests-204_passing-22C55E)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-<img src="docs/images/hero-dark.jpg" alt="Página de inicio de CV-Optimizer" width="800" />
+<img src="docs/images/hero.jpg" alt="Portada de CV-Optimizer: un CV de ejemplo sujeto en un tablero de pinza, corregido con rotuladores verde, ámbar y azul" width="800" />
 
 </div>
 
@@ -95,8 +95,8 @@ Si encuentra algo:
 Acepta en cambio las reformulaciones veraces: sinónimos (`JS ↔ JavaScript`, `Postgres ↔ PostgreSQL`), plurales y reordenaciones. Los tests cubren tanto los casos que debe detectar como los falsos positivos que debe evitar.
 
 <div align="center">
-<img src="docs/images/result-validator.jpg" alt="Resultado con dos datos marcados por el validador" width="800" />
-<br/><sub>Ejemplo con datos de demostración: el validador marca el "45%" y "Kubernetes", que no estaban en el CV original.</sub>
+<img src="docs/images/result.jpg" alt="Resultado: CV optimizado en el tablero, con avisos del validador, sugerencias ATS y puntuación de compatibilidad" width="800" />
+<br/><sub>Ejemplo con datos de demostración (CV ficticio y respuesta simulada del LLM): el validador marca en ámbar el "30%" y "SAP", que no estaban en el CV original; en verde, lo reformulado; en azul, el "Carnet de conducir" que el usuario añadió desde las sugerencias.</sub>
 </div>
 
 ## Arquitectura
