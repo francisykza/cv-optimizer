@@ -1,17 +1,21 @@
 import { Plus, ShieldAlert, X } from 'lucide-react'
 import { type FormEvent, useId, useState } from 'react'
 
-import { experienceNote } from '../../lib/injectSkill'
+import { type ExperienceEntry, experienceNote, SKILLS_TARGET } from '../../lib/injectSkill'
 
 export interface ExperienceNote {
   gap: string
   note: string
+  /** SKILLS_TARGET o la línea del puesto donde se añade. */
+  target: string
 }
 
 interface GapListProps {
   /** Requisitos pendientes (sin los que el usuario ya ha resuelto). */
   gaps: string[]
   notes: ExperienceNote[]
+  /** Puestos del CV donde se puede añadir la experiencia, además de Habilidades. */
+  entries: ExperienceEntry[]
   onAddNote: (note: ExperienceNote) => void
   onRemoveNote: (gap: string) => void
 }
@@ -19,7 +23,7 @@ interface GapListProps {
 const MIN_NOTE_CHARS = 8
 
 /** "Lo que pide la oferta y no está en tu CV", con la opción de aportar experiencia real. */
-export function GapList({ gaps, notes, onAddNote, onRemoveNote }: GapListProps) {
+export function GapList({ gaps, notes, entries, onAddNote, onRemoveNote }: GapListProps) {
   const [editing, setEditing] = useState<string | null>(null)
   if (gaps.length === 0 && notes.length === 0) return null
 
@@ -32,8 +36,8 @@ export function GapList({ gaps, notes, onAddNote, onRemoveNote }: GapListProps) 
         <h3 className="text-sm font-semibold">Lo que pide la oferta y no está en tu CV</h3>
       </div>
       <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-        No lo hemos añadido porque no aparece en tu CV original. Si tienes experiencia real, cuéntala en una frase y la
-        añadimos a tu sección de habilidades.
+        No lo hemos añadido porque no aparece en tu CV original. Si tienes experiencia real, cuéntala en una frase y
+        elige dónde añadirla: en Habilidades o en el puesto donde la usaste.
       </p>
 
       {gaps.length > 0 && (
@@ -47,9 +51,10 @@ export function GapList({ gaps, notes, onAddNote, onRemoveNote }: GapListProps) 
               {editing === gap ? (
                 <NoteForm
                   gap={gap}
+                  entries={entries}
                   onCancel={() => setEditing(null)}
-                  onSubmit={(note) => {
-                    onAddNote({ gap, note })
+                  onSubmit={(note, target) => {
+                    onAddNote({ gap, note, target })
                     setEditing(null)
                   }}
                 />
@@ -72,12 +77,17 @@ export function GapList({ gaps, notes, onAddNote, onRemoveNote }: GapListProps) 
         <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
           <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Añadido por ti</p>
           <ul className="mt-2 space-y-2" aria-label="Experiencia añadida por ti">
-            {notes.map(({ gap, note }) => (
+            {notes.map(({ gap, note, target }) => (
               <li
                 key={gap}
                 className="flex items-start gap-2 rounded-md bg-sky-50 px-2.5 py-2 text-xs text-sky-900 ring-1 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-100 dark:ring-sky-500/30"
               >
-                <span className="flex-1">{experienceNote(gap, note)}</span>
+                <span className="flex-1">
+                  {experienceNote(gap, note, target)}
+                  <span className="mt-0.5 block text-[11px] text-sky-700 dark:text-sky-300">
+                    En {target === SKILLS_TARGET ? 'Habilidades' : entries.find((e) => e.line === target)?.label}
+                  </span>
+                </span>
                 <button
                   type="button"
                   onClick={() => onRemoveNote(gap)}
@@ -95,14 +105,23 @@ export function GapList({ gaps, notes, onAddNote, onRemoveNote }: GapListProps) 
   )
 }
 
-function NoteForm({ gap, onSubmit, onCancel }: { gap: string; onSubmit: (note: string) => void; onCancel: () => void }) {
+interface NoteFormProps {
+  gap: string
+  entries: ExperienceEntry[]
+  onSubmit: (note: string, target: string) => void
+  onCancel: () => void
+}
+
+function NoteForm({ gap, entries, onSubmit, onCancel }: NoteFormProps) {
   const [note, setNote] = useState('')
+  const [target, setTarget] = useState(SKILLS_TARGET)
   const inputId = useId()
+  const targetId = useId()
   const valid = note.trim().length >= MIN_NOTE_CHARS
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (valid) onSubmit(note.trim())
+    if (valid) onSubmit(note.trim(), target)
   }
 
   return (
@@ -120,6 +139,26 @@ function NoteForm({ gap, onSubmit, onCancel }: { gap: string; onSubmit: (note: s
         aria-label={`Tu experiencia con ${gap}`}
         className="focus-ring h-9 w-full rounded-md border border-slate-300 bg-paper px-2.5 text-sm dark:border-slate-700 dark:bg-slate-950"
       />
+      {entries.length > 0 && (
+        <div>
+          <label htmlFor={targetId} className="block text-xs text-slate-600 dark:text-slate-400">
+            ¿Dónde lo añadimos?
+          </label>
+          <select
+            id={targetId}
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            className="focus-ring mt-1 h-9 w-full rounded-md border border-slate-300 bg-paper px-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+          >
+            <option value={SKILLS_TARGET}>Habilidades</option>
+            {entries.map((entry) => (
+              <option key={entry.line} value={entry.line}>
+                Experiencia: {entry.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="flex gap-2">
         <button
           type="submit"

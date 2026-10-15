@@ -1,5 +1,6 @@
 import { TrendingUp } from 'lucide-react'
 
+import { useAnimatedNumber } from '../../hooks/useAnimatedNumber'
 import type { MatchReport } from '../../types/api'
 
 const RADIUS = 42
@@ -13,6 +14,8 @@ function scoreColor(score: number): string {
 
 export function MatchScoreCard({ match }: { match: MatchReport }) {
   const delta = match.score_after - match.score_before
+  // Al llegar el resultado, el marcador cuenta desde la puntuación de antes hasta la de después.
+  const shown = useAnimatedNumber(match.score_after, match.score_before)
   const total = match.matched_keywords.length + match.missing_keywords.length
 
   return (
@@ -21,7 +24,14 @@ export function MatchScoreCard({ match }: { match: MatchReport }) {
       <div className="mt-4 flex items-center gap-5">
         <div className="relative size-28 shrink-0">
           <svg viewBox="0 0 100 100" className="size-full -rotate-90" aria-hidden>
-            <circle cx="50" cy="50" r={RADIUS} fill="none" strokeWidth="9" className="stroke-slate-100 dark:stroke-slate-800" />
+            <circle
+              cx="50"
+              cy="50"
+              r={RADIUS}
+              fill="none"
+              strokeWidth="9"
+              className="stroke-slate-100 dark:stroke-slate-800"
+            />
             <circle
               cx="50"
               cy="50"
@@ -31,19 +41,20 @@ export function MatchScoreCard({ match }: { match: MatchReport }) {
               strokeLinecap="round"
               stroke="currentColor"
               strokeDasharray={CIRCUMFERENCE}
-              strokeDashoffset={CIRCUMFERENCE * (1 - match.score_after / 100)}
-              className={`${scoreColor(match.score_after)} transition-[stroke-dashoffset] duration-1000 ease-out`}
+              strokeDashoffset={CIRCUMFERENCE * (1 - shown / 100)}
+              className={scoreColor(shown)}
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-bold tabular-nums">{match.score_after}%</span>
+            <span className="text-2xl font-bold tabular-nums">{Math.round(shown)}%</span>
             <span className="text-[11px] text-slate-500 dark:text-slate-400">después</span>
           </div>
         </div>
 
         <div className="space-y-2 text-sm">
           <p className="text-slate-600 dark:text-slate-400">
-            Antes: <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{match.score_before}%</span>
+            Antes:{' '}
+            <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{match.score_before}%</span>
           </p>
           {delta > 0 && (
             <p className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20">

@@ -26,6 +26,8 @@ interface ElementNode {
 type HastNode = TextNode | ElementNode | { type: string; children?: HastNode[] }
 
 const SKIP_TAGS = new Set(['code', 'pre', 'mark'])
+// Un título de sección nuevo ("Resumen profesional") no es una reformulación: ahí no se marca el verde.
+const HEADINGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -58,13 +60,13 @@ function buildLookup(groups: HighlightGroup[]): Map<string, TermInfo> {
   return lookup
 }
 
-function splitText(node: TextNode, pattern: RegExp, lookup: Map<string, TermInfo>): HastNode[] {
+function splitText(node: TextNode, pattern: RegExp, lookup: Map<string, TermInfo>, inHeading: boolean): HastNode[] {
   const parts: HastNode[] = []
   let last = 0
   for (const match of node.value.matchAll(pattern)) {
     const index = match.index ?? 0
     const info = lookup.get(match[0].toLowerCase())
-    if (!info) continue
+    if (!info || (inHeading && info.kind === 'change')) continue
     if (index > last) parts.push({ type: 'text', value: node.value.slice(last, index) })
     parts.push({
       type: 'element',
@@ -79,11 +81,15 @@ function splitText(node: TextNode, pattern: RegExp, lookup: Map<string, TermInfo
   return parts
 }
 
-function walk(node: HastNode, pattern: RegExp, lookup: Map<string, TermInfo>): void {
+function walk(node: HastNode, pattern: RegExp, lookup: Map<string, TermInfo>, inHeading = false): void {
   if (!('children' in node) || !node.children) return
-  if (node.type === 'element' && SKIP_TAGS.has((node as ElementNode).tagName)) return
+  const tag = node.type === 'element' ? (node as ElementNode).tagName : ''
+  if (SKIP_TAGS.has(tag)) return
+  const heading = inHeading || HEADINGS.has(tag)
   node.children = node.children.flatMap((child) =>
-    child.type === 'text' ? splitText(child as TextNode, pattern, lookup) : (walk(child, pattern, lookup), [child]),
+    child.type === 'text'
+      ? splitText(child as TextNode, pattern, lookup, heading)
+      : (walk(child, pattern, lookup, heading), [child]),
   )
 }
 

@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.6.1 |
+| **Versión** | 1.7.0 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -24,6 +24,8 @@
 | 1.5.0 | 2026-10-15 | Rediseño visual "la mesa del corrector" (§9.5): paleta de papel, tinta y rotuladores, IBM Plex Sans/Serif y portada con demo animada en lugar del kit genérico de tarjetas. |
 | 1.6.0 | 2026-10-15 | Resumen reescribible (`UNGROUNDED_CLAIM` pasa a informativo), filtro de banners de cookies en frontend y backend, nivel de ajuste sutil/profundo, pitch de candidatura (`application_pitch`) validado, memoria local opcional del CV, experiencia del usuario en los requisitos que faltan e indicador del servidor tolerante; prompt v5; ADR-010. |
 | 1.6.1 | 2026-10-15 | Comparación de keywords sin tildes, secciones con encabezado de nivel 1 en el validador y aviso de rasgos de la oferta en el pitch (fallos vistos con el modelo de reserva `gpt-oss-20b`). |
+| 1.6.2 | 2026-10-15 | Tablero de pinza para la demo, el CV y el pitch; papel siempre claro; rotuladores legibles en modo oscuro; títulos sin marca de reformulado; destino elegible (Habilidades o un puesto) para la experiencia que añade el usuario. |
+| 1.7.0 | 2026-10-15 | Movimiento con narrativa propia (§9.5): tablero que cae y pinza que se cierra, rotulador que corrige la demo, carga con rotuladores trabajando, CV que se imprime, puntuación que cuenta y chips que vuelan al CV. |
 
 ---
 
@@ -1132,8 +1134,15 @@ stateDiagram-v2
 - **Identidad, "la mesa del corrector":** el lenguaje propio de la app son los subrayados del resultado (verde = reformulado, ámbar = no está en tu CV, azul = añadido por ti), y toda la interfaz se construye a partir de ellos:
   - **Paleta:** papel `#FFFFFF` sobre mesa `#EEF1F6`, tinta `#1B2A4A` para textos, cobalto `#2747D9` solo para acciones y tres rotuladores (`#B9F2C8`, `#FFE08A`, `#BFE3FF`). Se evita a propósito el crema con terracota y el degradado índigo y violeta, que son los clichés más habituales de las webs generadas con IA.
   - **Tipografía:** IBM Plex Sans para la interfaz e IBM Plex Serif para el CV, que así se lee como un documento impreso. Las fuentes van en el bundle (`@fontsource`), por la CSP `font-src 'self'`.
+  - **Tablero de pinza:** todo lo que es documento (la demo de la portada, el CV optimizado y el pitch) es una hoja sujeta con una pinza metálica sobre un tablero de tinta (`Clipboard`, `.board`, `.board-clip`). El papel (`.sheet`) es claro también en modo oscuro, como una hoja impresa, y lleva los rotuladores en sus colores reales.
   - **Jerarquía:** los paneles (`.card`) son papel plano sin sombra; solo los documentos (`.sheet`) llevan sombra de papel. Los radios dependen del papel: paneles `lg`, controles `md`, chips redondos y hoja casi en ángulo recto.
-  - **Portada:** titular sin acentos de color y una hoja de CV de ejemplo en la que los tres rotuladores se dibujan al cargar (`.marker` + `animate-marker`). Es la única animación automática de la web y respeta `prefers-reduced-motion`. Sustituye a las tarjetas de características: muestra la función real en vez de describirla.
+  - **Portada:** titular sin acentos de color y una hoja de CV de ejemplo que se corrige sola. Sustituye a las tarjetas de características: muestra la función real en vez de describirla.
+  - **Movimiento (v1.7):** todas las animaciones cuentan la historia del corrector con sus propios objetos y nunca son el fundido genérico de "cada sección aparece al hacer scroll":
+    - *Portada* (`HeroDemo`): el tablero cae sobre la mesa, la pinza se cierra sobre la hoja y un rotulador (SVG) recorre el CV subrayando en ámbar, verde y azul mientras la leyenda se enciende. La nota "Revisa esto" se escribe a mano. El tablero se inclina en 3D con el ratón y la pinza (o "Ver de nuevo") repite la demo.
+    - *Carga*: la hoja ya está en el tablero y los rotuladores repasan sus líneas en bucle.
+    - *Resultado*: el CV "se imprime" bajo la pinza con una línea de escaneo, los resaltados se dibujan en cascada y la puntuación cuenta desde "antes" hasta "después".
+    - *Sugerencias*: el chip pulsado vuela hasta su sitio en el CV y lo hace brillar; si el CV está fuera de la pantalla, vuela hacia el borde por el que queda.
+    - *Técnica*: Web Animations API sin dependencias (`lib/motion.ts`), solo `transform`, `opacity`, `clip-path` y fondos, para no repetir los tirones de scroll. Todo se omite con `prefers-reduced-motion` y el contenido queda en su estado final.
   - **Textos:** sin etiquetas decorativas sobre los títulos ni datos unidos con "·"; cada botón dice exactamente lo que hace ("Empezar con mi CV" lleva al formulario, "Optimizar mi CV" optimiza).
   - **Método:** el rediseño siguió la skill `frontend-design` de Anthropic (diagnóstico de los rasgos genéricos, plan de tokens revisado antes de programar y crítica con capturas en ordenador y móvil).
 - Tailwind v4 con los tokens en `@theme` (`src/index.css`); modo oscuro con `prefers-color-scheme`.
@@ -1213,7 +1222,7 @@ Un único campo acepta la oferta en tres formas. El `textarea` intercepta `onPas
   - Guarda el PDF en IndexedDB, muestra "Guardado en este navegador" o "Recuperado de este navegador" y ofrece "Olvidar memoria local".
   - Quitar el archivo también borra la memoria.
 - **"Sí tengo experiencia en esto":**
-  - Cada requisito que falta admite una frase del usuario, que se añade al CV como viñeta "Requisito: frase" en Habilidades, resaltada en azul.
+  - Cada requisito que falta admite una frase del usuario. El usuario elige dónde va: en Habilidades ("Requisito: frase") o como viñeta de uno de sus puestos ("Frase (Requisito)"; el requisito se conserva para el ATS). Se resalta en azul.
   - La puntuación se recalcula en el cliente con cualquier palabra clave de la oferta que haya pasado a estar presente.
   - El requisito y la sugerencia ATS equivalente desaparecen.
   - El CV sigue derivándose del Markdown del servidor, así que quitar la frase lo deshace.

@@ -88,6 +88,7 @@ Los prompts literales de la conversación no se incluyen en el repositorio a pro
 | 11. Oferta en un solo campo | Pegar enlace, captura o texto copiado de la web en el mismo `textarea` | Enlace vía Jina Reader con detección de muros por contenido (Jina responde 200 incluso con LinkedIn bloqueado), OCR en el navegador con carga diferida y CSP ajustada, limpieza del texto pegado y prompt v4 contra el ruido de la web (ADR-009). La prueba en el navegador destapó un fallo (el separador podía superar el límite de caracteres), corregido con su test |
 | 12. Rediseño visual | Aplicar la skill `frontend-design` de Anthropic a la interfaz | Diagnóstico de los rasgos de "web generada por IA" (degradados, píldora sobre el titular, tarjetas idénticas, Inter), propuesta de identidad propia aprobada antes de programar ("la mesa del corrector": papel, tinta y los rotuladores que ya usaba el resultado) y revisión con capturas en claro, oscuro y móvil |
 | 13. Versión interactiva | SDD 2.5 del autor: validador más flexible, filtro de cookies, memoria del CV, nivel de ajuste, pitch y experiencia en los gaps | Antes de programar se contrastaron dos puntos con el autor. Relajar el validador no subiría la puntuación sin inventar, así que se flexibiliza solo el estilo. La memoria del CV pasa a ser opcional. El resto se implementó con su validación (el pitch pasa por el mismo control de datos duros) y se probó en el navegador, donde apareció un desbordamiento de pestañas en móvil, ya corregido (ADR-010) |
+| 14. Movimiento | Animaciones "que impacten" sin parecer una página genérica de IA | Se descartó el recurso habitual (fundidos al hacer scroll) y se diseñó una coreografía con los objetos de la app: tablero, pinza, rotulador, papel que se imprime y chips que vuelan al CV. Antes, se corrigieron los rotuladores en modo oscuro (el `<mark>` del navegador teñía de amarillo el fondo) y se añadió el destino de la experiencia que aporta el usuario |
 
 El historial de commits refleja estas fases y cada mensaje explica el *porqué* del cambio, no solo el *qué*.
 
@@ -110,7 +111,7 @@ Las pruebas con usuarios y servicios reales sacaron a la luz problemas que los t
 
 El criterio fue no dar nada por terminado sin una prueba que lo demostrara:
 
-- **Tests automáticos:** 199 en total (137 en el backend con pytest y 62 en el frontend con Vitest), ejecutados en cada push por la CI.
+- **Tests automáticos:** 204 en total (137 en el backend con pytest y 67 en el frontend con Vitest), ejecutados en cada push por la CI.
 - **Controles negativos:** los tests críticos se comprobaron haciéndolos fallar a propósito. Por ejemplo, el test que garantiza que el PDF nunca se escribe en disco falla si se quita la corrección.
 - **Flujo completo con un LLM simulado:** un servidor local que imita a Groq devolviendo CVs con datos inventados. Así se probó la corrección automática y el resaltado sin gastar cuota.
 - **Seguridad del navegador:** el build de producción se sirvió localmente con la misma Content-Security-Policy que Vercel, para confirmar que la app y las exportaciones no la violan.
@@ -143,7 +144,7 @@ El proyecto aplica a su propio dominio los principios que exige el uso de IA gen
 | Duración | 2 días (12 y 13 de octubre de 2026) |
 | Especificación | `SDD.md`: ~1.520 líneas, versión 1.6.0, 10 ADRs |
 | Código | ~4.700 líneas de código de aplicación y ~1.300 de tests, en Python y TypeScript |
-| Tests | 199 (137 en el backend y 62 en el frontend) |
+| Tests | 204 (137 en el backend y 67 en el frontend) |
 | Fallos de producción resueltos | 8, cada uno con su test de regresión |
 | Coste de infraestructura | 0 €: planes gratuitos de Groq, Render y Vercel |
 

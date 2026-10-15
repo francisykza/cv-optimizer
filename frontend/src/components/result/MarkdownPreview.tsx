@@ -32,7 +32,7 @@ const MARK_STYLES = {
 export function MarkdownPreview({ markdown, highlightGroups = [] }: MarkdownPreviewProps) {
   return (
     <article
-      className="prose prose-slate max-w-none font-serif text-[15.5px] leading-[1.7] text-ink prose-headings:font-semibold prose-headings:text-ink prose-h1:mb-1 prose-h1:text-[1.9rem] prose-h1:tracking-tight prose-h2:mt-8 prose-h2:mb-3 prose-h2:border-b prose-h2:border-slate-300 prose-h2:pb-1.5 prose-h2:text-lg prose-h3:mt-5 prose-h3:mb-1 prose-h3:text-base prose-p:my-2 prose-a:text-cobalt-700 prose-li:my-0.5 prose-li:marker:text-slate-400 prose-strong:text-ink dark:text-slate-200 dark:prose-invert dark:prose-headings:text-white dark:prose-h2:border-slate-700 dark:prose-strong:text-white"
+      className="prose prose-slate max-w-none font-serif text-[15.5px] leading-[1.7] text-ink prose-headings:font-semibold prose-headings:text-ink prose-h1:mb-1 prose-h1:text-[1.9rem] prose-h1:tracking-tight prose-h2:mt-8 prose-h2:mb-3 prose-h2:border-b prose-h2:border-slate-300 prose-h2:pb-1.5 prose-h2:text-lg prose-h3:mt-5 prose-h3:mb-1 prose-h3:text-base prose-p:my-2 prose-a:text-cobalt-700 prose-li:my-0.5 prose-li:marker:text-slate-400 prose-strong:text-ink"
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}

@@ -10,7 +10,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Python](https://img.shields.io/badge/Python_3.12-3776AB?logo=python&logoColor=white)
 ![Groq](https://img.shields.io/badge/LLM-Groq-F55036)
-![Tests](https://img.shields.io/badge/tests-199_passing-22C55E)
+![Tests](https://img.shields.io/badge/tests-204_passing-22C55E)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/hero-dark.jpg" alt="Página de inicio de CV-Optimizer" width="800" />
@@ -57,7 +57,7 @@
 | Nivel de ajuste | **Sutil** (mantiene tus frases y solo incorpora palabras clave) o **Profundo** (reescribe el enfoque con verbos de acción y logros, sin inventar resultados). |
 | Pitch para la oferta | Tercera pestaña con un mensaje breve (1 párrafo y 3 viñetas) para la carta de presentación de InfoJobs o un mensaje por LinkedIn, validado igual que el CV. |
 | Memoria local (opcional) | "Recordar mi CV en este navegador": el PDF se guarda en tu navegador (IndexedDB), nunca en el servidor, y se puede olvidar con un clic. |
-| Sugerencias ATS | Chips con los requisitos verificables que te faltan (nunca rasgos personales). Al pulsarlos se añaden a la sección de habilidades, resaltados en azul como "Añadido por ti", y la puntuación se recalcula. Se pueden quitar. La decisión es tuya, no de la IA. En los requisitos que faltan, **"Sí tengo experiencia en esto"** te deja explicarlo en una frase y la añade al CV. |
+| Sugerencias ATS | Chips con los requisitos verificables que te faltan (nunca rasgos personales). Al pulsarlos se añaden a la sección de habilidades, resaltados en azul como "Añadido por ti", y la puntuación se recalcula. Se pueden quitar. La decisión es tuya, no de la IA. En los requisitos que faltan, **"Sí tengo experiencia en esto"** te deja explicarlo en una frase y elegir dónde va: en Habilidades o en el puesto donde lo usaste. |
 | Filtro de cookies | Los banners de cookies y consentimiento copiados con la oferta se eliminan antes de enviarla, en el navegador y en el servidor. |
 | Arranque en frío | El frontend "despierta" el backend de Render al cargar la página y avisa si tarda. |
 | Accesibilidad | Navegación por teclado, `aria-live` en los estados de carga y modo oscuro automático. |
@@ -210,7 +210,7 @@ La lista completa está en [`backend/.env.example`](backend/.env.example) y [`co
 
 ```bash
 cd backend && pytest -q && ruff check app tests     # 137 tests
-cd frontend && npm test && npm run build             # 62 tests + typecheck + build
+cd frontend && npm test && npm run build             # 67 tests + typecheck + build
 ```
 
 Qué cubren:

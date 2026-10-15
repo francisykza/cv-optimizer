@@ -5,7 +5,7 @@ interface AtsSuggestionsProps {
   suggestions: string[]
   /** Habilidades que el usuario ya ha añadido a su CV desde este panel. */
   added: string[]
-  onAdd: (skill: string) => void
+  onAdd: (skill: string, source: HTMLElement) => void
   onRemove: (skill: string) => void
   disabled?: boolean
 }
@@ -30,7 +30,7 @@ export function AtsSuggestions({ suggestions, added, onAdd, onRemove, disabled =
             <li key={skill}>
               <button
                 type="button"
-                onClick={() => onAdd(skill)}
+                onClick={(e) => onAdd(skill, e.currentTarget)}
                 disabled={disabled}
                 aria-label={`Añadir ${skill} al CV`}
                 className="focus-ring inline-flex items-center gap-1 rounded-full bg-white py-1 pr-3 pl-2 text-xs font-medium text-sky-800 ring-1 ring-sky-200 transition hover:bg-sky-50 hover:ring-sky-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-900 dark:text-sky-300 dark:ring-sky-500/30 dark:hover:bg-sky-500/10"

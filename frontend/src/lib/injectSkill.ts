@@ -4,8 +4,7 @@
 
 import { buildTermsRegExp } from './rehypeHighlightTerms'
 
-const SKILLS_HEADING =
-  /^(#{2,3})\s+.*\b(habilidades|competencias|conocimientos|aptitudes|herramientas|skills|tools)\b/i
+const SKILLS_HEADING = /^(#{2,3})\s+.*\b(habilidades|competencias|conocimientos|aptitudes|herramientas|skills|tools)\b/i
 const ENGLISH_HEADINGS = /^#{2,3}\s+(experience|education|skills|summary|profile|work)\b/im
 const HEADING = /^(#{1,6})\s/
 const LIST_ITEM = /^(\s*[-*+])\s+/
@@ -19,21 +18,89 @@ export function containsSkill(markdown: string, skill: string): boolean {
 
 /** Etiqueta corta de un requisito: "Inglés C1 (el CV indica B2)" -> "Inglés C1". */
 export function gapLabel(gap: string): string {
-  return gap.replace(/\s*\([^)]*\)/g, '').replace(/[.:;]+$/, '').trim()
+  return gap
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/[.:;]+$/, '')
+    .trim()
 }
 
-/** Texto que se añade al CV cuando el usuario confirma que tiene experiencia en un requisito. */
-export function experienceNote(gap: string, note: string): string {
-  return `${gapLabel(gap)}: ${note.trim().replace(/\.$/, '')}`
+/** Destino por defecto de la experiencia que añade el usuario. El resto son líneas de puesto. */
+export const SKILLS_TARGET = 'skills'
+
+/** Texto que se añade al CV cuando el usuario confirma que tiene experiencia en un requisito.
+ *  En Habilidades: "Requisito: cómo lo usó". Bajo un puesto: una viñeta normal que conserva el
+ *  requisito (para el ATS) si la frase no lo menciona ya. */
+export function experienceNote(gap: string, note: string, target: string = SKILLS_TARGET): string {
+  const label = gapLabel(gap)
+  const text = note.trim().replace(/\.$/, '')
+  if (target === SKILLS_TARGET) return `${label}: ${text}`
+  const sentence = text.charAt(0).toUpperCase() + text.slice(1)
+  return containsSkill(sentence, label) ? sentence : `${sentence} (${label})`
 }
 
 export function injectSkill(markdown: string, skill: string): string {
   return inject(markdown, skill.trim(), false)
 }
 
-/** Añade "Requisito: cómo lo usaste" como viñeta propia en la sección de habilidades. */
-export function injectExperience(markdown: string, gap: string, note: string): string {
+/** Añade la experiencia del usuario en Habilidades o como viñeta del puesto elegido (`target` es
+ *  la línea del puesto, tal como la devuelve `experienceEntries`). */
+export function injectExperience(markdown: string, gap: string, note: string, target: string = SKILLS_TARGET): string {
+  if (target !== SKILLS_TARGET) {
+    const result = injectIntoEntry(markdown, target, experienceNote(gap, note, target))
+    if (result !== null) return result
+  }
   return inject(markdown, experienceNote(gap, note), true)
+}
+
+const EXPERIENCE_HEADING = /^(#{1,3})\s+.*(experien|trayectoria|employment|work history|empleo)/i
+const BOLD_TITLE = /^\s*\*\*[^*]+\*\*/
+
+export interface ExperienceEntry {
+  /** Línea exacta del puesto en el Markdown (identifica el destino). */
+  line: string
+  /** Texto legible: "Gestoria Sur SL - Auxiliar administrativa (2022 - Actualidad)". */
+  label: string
+}
+
+/** Puestos de la sección de experiencia: subtítulos (### Puesto) o líneas en negrita. */
+export function experienceEntries(markdown: string): ExperienceEntry[] {
+  const lines = markdown.split('\n')
+  const start = lines.findIndex((line) => EXPERIENCE_HEADING.test(line))
+  if (start === -1) return []
+  const level = lines[start].match(HEADING)![1].length
+  const entries: ExperienceEntry[] = []
+  for (let i = start + 1; i < lines.length; i++) {
+    const heading = lines[i].match(HEADING)
+    if (heading && heading[1].length <= level) break
+    if (heading || (BOLD_TITLE.test(lines[i]) && !LIST_ITEM.test(lines[i]))) {
+      const label = lines[i]
+        .replace(/^#{1,6}\s+/, '')
+        .replace(/\*\*|__|\*/g, '')
+        .trim()
+      if (label) entries.push({ line: lines[i], label })
+    }
+  }
+  return entries
+}
+
+function injectIntoEntry(markdown: string, entryLine: string, text: string): string | null {
+  if (containsSkill(markdown, text)) return markdown
+  const lines = markdown.split('\n')
+  const start = lines.indexOf(entryLine)
+  if (start === -1) return null
+  // El bloque del puesto acaba en el siguiente encabezado o en el siguiente puesto en negrita.
+  let end = lines.length
+  for (let i = start + 1; i < lines.length; i++) {
+    if (HEADING.test(lines[i]) || (BOLD_TITLE.test(lines[i]) && !LIST_ITEM.test(lines[i]))) {
+      end = i
+      break
+    }
+  }
+  let last = end - 1
+  while (last > start && lines[last].trim() === '') last--
+  const marker = LIST_ITEM.test(lines[last]) ? lines[last].match(LIST_ITEM)![1] : '-'
+  lines.splice(last + 1, 0, `${marker} ${text}`)
+  return lines.join('\n')
 }
 
 function inject(markdown: string, term: string, asListItem: boolean): string {
