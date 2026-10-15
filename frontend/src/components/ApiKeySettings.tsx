@@ -177,7 +177,7 @@ export function ApiKeySettings({
                   type="checkbox"
                   checked={remember}
                   onChange={(e) => onRememberChange(e.target.checked)}
-                  className="size-4 rounded border-slate-300 accent-indigo-600"
+                  className="size-4 rounded border-slate-300 accent-cobalt-600"
                 />
                 Recordar durante esta sesión
               </label>
@@ -198,7 +198,7 @@ export function ApiKeySettings({
                   href="https://console.groq.com/keys"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="focus-ring inline-flex items-center gap-1 rounded font-medium text-indigo-600 underline-offset-4 hover:underline dark:text-indigo-400"
+                  className="focus-ring inline-flex items-center gap-1 rounded font-medium text-cobalt-600 underline-offset-4 hover:underline dark:text-cobalt-400"
                 >
                   Conseguir una clave <ExternalLink className="size-3.5" aria-hidden />
                 </a>

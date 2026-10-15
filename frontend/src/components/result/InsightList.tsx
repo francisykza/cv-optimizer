@@ -7,12 +7,12 @@ interface InsightListProps {
   description?: string
   items: string[]
   icon: LucideIcon
-  tone: 'amber' | 'indigo'
+  tone: 'amber' | 'cobalt'
 }
 
 const TONES = {
   amber: 'bg-amber-50 text-amber-600 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-500/20',
-  indigo: 'bg-indigo-50 text-indigo-600 ring-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-400 dark:ring-indigo-500/20',
+  cobalt: 'bg-cobalt-50 text-cobalt-600 ring-cobalt-200 dark:bg-cobalt-500/10 dark:text-cobalt-400 dark:ring-cobalt-500/20',
 }
 
 export function InsightList({ title, description, items, icon: Icon, tone }: InsightListProps) {
@@ -31,7 +31,7 @@ export function InsightList({ title, description, items, icon: Icon, tone }: Ins
         {items.map((item) => (
           <li key={item} className="flex gap-2 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
             <span
-              className={cn('mt-2 size-1.5 shrink-0 rounded-full', tone === 'amber' ? 'bg-amber-400' : 'bg-indigo-400')}
+              className={cn('mt-2 size-1.5 shrink-0 rounded-full', tone === 'amber' ? 'bg-amber-400' : 'bg-cobalt-400')}
               aria-hidden
             />
             {item}

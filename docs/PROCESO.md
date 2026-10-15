@@ -28,7 +28,7 @@ El proyecto empezó por el diseño, no por el código. El primer entregable fue 
 - el flujo de datos en memoria, sin persistencia,
 - y la **regla de negocio principal: el sistema no puede inventar experiencia**.
 
-A partir de ahí, cada funcionalidad se encargó al agente como una **especificación acotada**, con contexto, objetivo, restricciones y criterios de aceptación. Antes de tocar código, el agente proponía un plan que el autor revisaba y aprobaba (modo *plan* de Claude Code). El SDD se fue actualizando con cada cambio relevante; hoy va por la versión 1.4.0 e incluye nueve decisiones de arquitectura (ADR).
+A partir de ahí, cada funcionalidad se encargó al agente como una **especificación acotada**, con contexto, objetivo, restricciones y criterios de aceptación. Antes de tocar código, el agente proponía un plan que el autor revisaba y aprobaba (modo *plan* de Claude Code). El SDD se fue actualizando con cada cambio relevante; hoy va por la versión 1.5.0 e incluye nueve decisiones de arquitectura (ADR).
 
 **Por qué este enfoque con un agente de IA.** Un agente de código es muy productivo, pero tiende a rellenar los huecos de una petición ambigua con suposiciones. Una especificación escrita reduce esos huecos, ofrece un criterio objetivo para revisar el resultado y deja constancia de *por qué* se tomó cada decisión, algo que el código por sí solo no explica.
 
@@ -86,6 +86,7 @@ Los prompts literales de la conversación no se incluyen en el repositorio a pro
 | 9. Puntuación honesta | Que la compatibilidad no baje al optimizar y mida requisitos reales | Recuperación automática de keywords perdidas, filtro de genéricas y rasgos personales aparte (prompt v3) |
 | 10. Sugerencias ATS | Un SDD V2 del autor: sugerencias que se añaden al CV con un clic | El plan contrastó el SDD V2 con el código existente: parte ya estaba hecha (JSON mode, parseo, bloqueo durante la carga) y sustituir el contrato habría eliminado la puntuación y los avisos. Se amplió el contrato, las sugerencias se calculan sin LLM y el CV se deriva en el cliente (ADR-008) |
 | 11. Oferta en un solo campo | Pegar enlace, captura o texto copiado de la web en el mismo `textarea` | Enlace vía Jina Reader con detección de muros por contenido (Jina responde 200 incluso con LinkedIn bloqueado), OCR en el navegador con carga diferida y CSP ajustada, limpieza del texto pegado y prompt v4 contra el ruido de la web (ADR-009). La prueba en el navegador destapó un fallo (el separador podía superar el límite de caracteres), corregido con su test |
+| 12. Rediseño visual | Aplicar la skill `frontend-design` de Anthropic a la interfaz | Diagnóstico de los rasgos de "web generada por IA" (degradados, píldora sobre el titular, tarjetas idénticas, Inter), propuesta de identidad propia aprobada antes de programar ("la mesa del corrector": papel, tinta y los rotuladores que ya usaba el resultado) y revisión con capturas en claro, oscuro y móvil |
 
 El historial de commits refleja estas fases y cada mensaje explica el *porqué* del cambio, no solo el *qué*.
 
@@ -138,7 +139,7 @@ El proyecto aplica a su propio dominio los principios que exige el uso de IA gen
 | Indicador | Valor |
 |---|---|
 | Duración | 2 días (12 y 13 de octubre de 2026) |
-| Especificación | `SDD.md`: ~1.470 líneas, versión 1.4.0, 9 ADRs |
+| Especificación | `SDD.md`: ~1.480 líneas, versión 1.5.0, 9 ADRs |
 | Código | ~4.700 líneas de código de aplicación y ~1.300 de tests, en Python y TypeScript |
 | Tests | 174 (124 en el backend y 50 en el frontend) |
 | Fallos de producción resueltos | 7, cada uno con su test de regresión |

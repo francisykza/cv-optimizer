@@ -77,7 +77,7 @@ export function DownloadMenu({ markdown }: { markdown: string }) {
           role="menu"
           aria-label="Formato de descarga"
           onKeyDown={onMenuKeyDown}
-          className="absolute right-0 z-20 mt-2 w-72 origin-top-right animate-fade-in-up rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900"
+          className="absolute right-0 z-20 mt-2 w-72 origin-top-right animate-fade-in-up rounded-md border border-slate-200 bg-white p-1.5 shadow-lg shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900"
         >
           {OPTIONS.map(({ format, label, hint, icon: Icon, recommended }, i) => (
             <button
@@ -90,7 +90,7 @@ export function DownloadMenu({ markdown }: { markdown: string }) {
               onClick={() => void choose(format)}
               className="focus-ring flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-slate-50 focus:bg-slate-50 dark:hover:bg-slate-800 dark:focus:bg-slate-800"
             >
-              <Icon className="mt-0.5 size-4 shrink-0 text-indigo-600 dark:text-indigo-400" aria-hidden />
+              <Icon className="mt-0.5 size-4 shrink-0 text-cobalt-600 dark:text-cobalt-400" aria-hidden />
               <span className="min-w-0">
                 <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
                   {label}

@@ -12,18 +12,18 @@ interface MarkdownPreviewProps {
 }
 
 const MARK_STYLES = {
+  // Los tres rotuladores de la app (ver .marker en index.css).
   ungrounded: {
     title: 'No aparece en tu CV original',
-    className:
-      'rounded bg-amber-200/80 px-0.5 text-inherit underline decoration-amber-500 decoration-wavy underline-offset-4 dark:bg-amber-400/25 dark:text-amber-100',
+    className: 'marker marker-amber underline decoration-amber-600 decoration-wavy underline-offset-4',
   },
   added: {
     title: 'Añadido por ti',
-    className: 'rounded bg-sky-100 px-0.5 text-inherit ring-1 ring-sky-300 dark:bg-sky-500/20 dark:text-sky-100 dark:ring-sky-500/40',
+    className: 'marker marker-blue',
   },
   change: {
     title: 'Reformulado respecto a tu CV original',
-    className: 'rounded bg-emerald-100 px-0.5 text-inherit dark:bg-emerald-500/20 dark:text-emerald-100',
+    className: 'marker marker-green',
   },
 } as const
 
@@ -32,7 +32,7 @@ const MARK_STYLES = {
 export function MarkdownPreview({ markdown, highlightGroups = [] }: MarkdownPreviewProps) {
   return (
     <article
-      className="prose prose-slate max-w-none prose-headings:tracking-tight prose-h1:mb-2 prose-h1:text-3xl prose-h2:mt-8 prose-h2:border-b prose-h2:border-slate-200 prose-h2:pb-2 prose-h2:text-sm prose-h2:font-semibold prose-h2:uppercase prose-h2:tracking-wider prose-h2:text-indigo-700 prose-h3:mb-1 prose-h3:text-base prose-p:leading-relaxed prose-a:text-indigo-600 prose-li:my-0.5 prose-li:marker:text-indigo-400 prose-strong:text-slate-900 dark:prose-invert dark:prose-h2:border-slate-700 dark:prose-h2:text-indigo-300 dark:prose-strong:text-white"
+      className="prose prose-slate max-w-none font-serif text-[15.5px] leading-[1.7] text-ink prose-headings:font-semibold prose-headings:text-ink prose-h1:mb-1 prose-h1:text-[1.9rem] prose-h1:tracking-tight prose-h2:mt-8 prose-h2:mb-3 prose-h2:border-b prose-h2:border-slate-300 prose-h2:pb-1.5 prose-h2:text-lg prose-h3:mt-5 prose-h3:mb-1 prose-h3:text-base prose-p:my-2 prose-a:text-cobalt-700 prose-li:my-0.5 prose-li:marker:text-slate-400 prose-strong:text-ink dark:text-slate-200 dark:prose-invert dark:prose-headings:text-white dark:prose-h2:border-slate-700 dark:prose-strong:text-white"
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}

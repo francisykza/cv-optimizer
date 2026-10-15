@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.4.0 |
+| **Versión** | 1.5.0 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -21,6 +21,7 @@
 | 1.2.2 | 2026-10-13 | Puntuación: keywords verificables sin genéricas, `soft_skills` aparte, corrección de keywords perdidas y aviso `KEYWORD_DROPPED`; prompt v3. |
 | 1.3.0 | 2026-10-13 | Sugerencias ATS que el usuario añade con un clic (`ats_suggestions`, §9.7, ADR-008); notificaciones con `react-hot-toast`. |
 | 1.4.0 | 2026-10-13 | Textarea inteligente de la oferta (§9.8): enlace vía `POST /api/v1/extract-job-url` (Jina Reader), capturas con OCR en el navegador (tesseract.js) y limpieza del texto copiado; prompt v4 (ignorar el ruido de la web); hasta 6 sugerencias ATS; ADR-009. |
+| 1.5.0 | 2026-10-15 | Rediseño visual "la mesa del corrector" (§9.5): paleta de papel, tinta y rotuladores, IBM Plex Sans/Serif y portada con demo animada en lugar del kit genérico de tarjetas. |
 
 ---
 
@@ -1123,7 +1124,14 @@ stateDiagram-v2
 
 ### 9.5 Diseño visual y accesibilidad
 
-- Tailwind con tokens propios en `tailwind.config.ts` (colores de marca, `fontFamily`), modo oscuro con `class` y `prefers-color-scheme`.
+- **Identidad, "la mesa del corrector":** el lenguaje propio de la app son los subrayados del resultado (verde = reformulado, ámbar = no está en tu CV, azul = añadido por ti), y toda la interfaz se construye a partir de ellos:
+  - **Paleta:** papel `#FFFFFF` sobre mesa `#EEF1F6`, tinta `#1B2A4A` para textos, cobalto `#2747D9` solo para acciones y tres rotuladores (`#B9F2C8`, `#FFE08A`, `#BFE3FF`). Se evita a propósito el crema con terracota y el degradado índigo y violeta, que son los clichés más habituales de las webs generadas con IA.
+  - **Tipografía:** IBM Plex Sans para la interfaz e IBM Plex Serif para el CV, que así se lee como un documento impreso. Las fuentes van en el bundle (`@fontsource`), por la CSP `font-src 'self'`.
+  - **Jerarquía:** los paneles (`.card`) son papel plano sin sombra; solo los documentos (`.sheet`) llevan sombra de papel. Los radios dependen del papel: paneles `lg`, controles `md`, chips redondos y hoja casi en ángulo recto.
+  - **Portada:** titular sin acentos de color y una hoja de CV de ejemplo en la que los tres rotuladores se dibujan al cargar (`.marker` + `animate-marker`). Es la única animación automática de la web y respeta `prefers-reduced-motion`. Sustituye a las tarjetas de características: muestra la función real en vez de describirla.
+  - **Textos:** sin etiquetas decorativas sobre los títulos ni datos unidos con "·"; cada botón dice exactamente lo que hace ("Empezar con mi CV" lleva al formulario, "Optimizar mi CV" optimiza).
+  - **Método:** el rediseño siguió la skill `frontend-design` de Anthropic (diagnóstico de los rasgos genéricos, plan de tokens revisado antes de programar y crítica con capturas en ordenador y móvil).
+- Tailwind v4 con los tokens en `@theme` (`src/index.css`); modo oscuro con `prefers-color-scheme`.
 - Componentes accesibles: etiquetas asociadas, `aria-live="polite"` para estados de carga y error, foco gestionado al cambiar de pantalla, contraste AA y navegación completa con teclado (la zona de arrastre también se activa con Enter o Espacio).
 - Responsive *mobile-first*.
 - **Rendimiento del scroll:** nada de `backdrop-filter` ni `filter: blur()` sobre elementos grandes o repetidos (tarjetas, cabecera fija, halo de la portada); los efectos de fondo se resuelven con gradientes y capas propias (`transform-gpu`). Sin `scroll-behavior: smooth` global: el desplazamiento suave se aplica solo a los `scrollIntoView` programáticos.

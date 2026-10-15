@@ -1,4 +1,4 @@
-import { Code2, Eye, FileCheck2, Lightbulb, RotateCcw, ShieldAlert } from 'lucide-react'
+import { Code2, Eye, Lightbulb, RotateCcw, ShieldAlert } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -69,14 +69,11 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
     <div className="animate-fade-in-up">
       <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
-            <FileCheck2 className="size-4" aria-hidden /> Optimización completada
-          </p>
-          <h2 className="mt-1 text-2xl font-bold tracking-tight">Tu CV optimizado</h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {meta.model} · {(meta.latency_ms / 1000).toFixed(1)} s ·{' '}
-            {formatNumber(meta.tokens.input + meta.tokens.output)} tokens ·{' '}
-            {meta.mode === 'byok' ? 'con tu API key' : 'modo gratuito'}
+          <h2 className="text-2xl font-semibold tracking-tight">Tu CV optimizado</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Generado con {meta.model} en {(meta.latency_ms / 1000).toFixed(1).replace('.', ',')} s (
+            {formatNumber(meta.tokens.input + meta.tokens.output)} tokens),{' '}
+            {meta.mode === 'byok' ? 'con tu API key' : 'en modo gratuito'}.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -95,7 +92,7 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
       {result.quality === 'needs_review' && (
         <div
           role="status"
-          className="mb-6 flex items-start gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/25"
+          className="mb-6 flex items-start gap-3 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/25"
         >
           <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <p>
@@ -127,7 +124,7 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
                 className={cn(
                   'focus-ring -mb-px inline-flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-2.5 text-sm font-medium transition',
                   tab === id
-                    ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300'
+                    ? 'border-cobalt-600 text-cobalt-700 dark:border-cobalt-400 dark:text-cobalt-300'
                     : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200',
                 )}
               >
@@ -142,11 +139,11 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
 
           <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
             {tab === 'preview' ? (
-              <div className="bg-slate-100/60 p-3 sm:p-6 dark:bg-slate-950/40">
+              <div className="bg-desk p-3 sm:p-8 dark:bg-slate-950/60">
                 {/* "Hoja" de papel para que se perciba como un documento */}
                 <div
                   ref={previewRef}
-                  className="mx-auto max-w-3xl rounded-lg bg-white px-6 py-8 shadow-md shadow-slate-900/5 ring-1 ring-slate-200 sm:px-12 sm:py-12 dark:bg-slate-900 dark:ring-slate-800"
+                  className="sheet mx-auto max-w-3xl px-6 py-8 sm:px-14 sm:py-14"
                 >
                   <MarkdownPreview markdown={markdown} highlightGroups={highlightGroups} />
                 </div>
@@ -171,7 +168,7 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
             icon={ShieldAlert}
             tone="amber"
           />
-          <InsightList title="Cambios realizados" items={result.changes_summary} icon={Lightbulb} tone="indigo" />
+          <InsightList title="Cambios realizados" items={result.changes_summary} icon={Lightbulb} tone="cobalt" />
         </aside>
       </div>
     </div>
@@ -226,16 +223,16 @@ function ChangesToggle({ checked, onChange, count, added }: ChangesToggleProps) 
       {checked && (
         <span className="flex items-center gap-3" aria-hidden>
           <span className="flex items-center gap-1.5">
-            <span className="size-2.5 rounded-sm bg-emerald-200 ring-1 ring-emerald-300 dark:bg-emerald-500/30 dark:ring-emerald-500/40" />
+            <span className="h-2.5 w-4 rounded-[2px] bg-marker-green dark:opacity-60" />
             Reformulado
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="size-2.5 rounded-sm bg-amber-200 ring-1 ring-amber-300 dark:bg-amber-400/30 dark:ring-amber-400/40" />
+            <span className="h-2.5 w-4 rounded-[2px] bg-marker-amber dark:opacity-60" />
             No está en tu CV
           </span>
           {added && (
             <span className="flex items-center gap-1.5">
-              <span className="size-2.5 rounded-sm bg-sky-100 ring-1 ring-sky-300 dark:bg-sky-500/30 dark:ring-sky-500/40" />
+              <span className="h-2.5 w-4 rounded-[2px] bg-marker-blue dark:opacity-60" />
               Añadido por ti
             </span>
           )}

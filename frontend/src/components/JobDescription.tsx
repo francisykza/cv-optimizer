@@ -64,7 +64,7 @@ export function JobDescription({
           'Pega aquí la oferta:\n• El texto (Ctrl+A y Ctrl+C en la web de la oferta)\n• El enlace (https://…)\n• Una o varias capturas de pantalla'
         }
         className={cn(
-          'focus-ring min-h-56 w-full flex-1 resize-y rounded-xl border bg-white px-4 py-3 text-sm leading-relaxed shadow-sm transition placeholder:text-slate-400 disabled:opacity-60 dark:bg-slate-950',
+          'focus-ring min-h-56 w-full flex-1 resize-y rounded-md border bg-paper px-4 py-3 text-sm leading-relaxed transition placeholder:text-slate-400 disabled:opacity-60 dark:bg-slate-950',
           tooLong
             ? 'border-rose-300 dark:border-rose-500/50'
             : 'border-slate-300 dark:border-slate-700',
@@ -155,14 +155,14 @@ function PasteStatus({ state }: { state: SmartPasteState }) {
   const percent = state.kind === 'ocr' && state.phase === 'recognizing' ? Math.round(state.progress * 100) : null
 
   return (
-    <div role="status" aria-live="polite" className="mt-2 text-xs text-indigo-700 dark:text-indigo-300">
+    <div role="status" aria-live="polite" className="mt-2 text-xs text-cobalt-700 dark:text-cobalt-300">
       <p className="flex items-center gap-1.5">
         <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
         {label}
       </p>
       {percent !== null && (
-        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-indigo-100 dark:bg-indigo-500/20">
-          <div className="h-full rounded-full bg-indigo-500 transition-[width]" style={{ width: `${percent}%` }} />
+        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-cobalt-100 dark:bg-cobalt-500/20">
+          <div className="h-full rounded-full bg-cobalt-500 transition-[width]" style={{ width: `${percent}%` }} />
         </div>
       )}
     </div>

@@ -17,19 +17,17 @@ export function Header({ serverState }: { serverState: ServerState }) {
   return (
     // Fondo casi opaco y sin backdrop-blur: desenfocar todo lo que pasa por debajo de una
     // cabecera fija cuesta un repintado completo por fotograma. translate-z-0 la sube a su capa.
-    <header className="sticky top-0 z-30 transform-gpu border-b border-slate-200/70 bg-white/95 dark:border-slate-800/70 dark:bg-slate-950/95">
+    <header className="sticky top-0 z-30 transform-gpu border-b border-slate-300/60 bg-desk/95 dark:border-slate-800/70 dark:bg-slate-950/95">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <a href="#" className="focus-ring flex items-center gap-2.5 rounded-lg" aria-label="CV-Optimizer, inicio">
           <Logo className="size-8" />
-          <span className="text-[15px] font-semibold tracking-tight">
-            CV<span className="text-indigo-600 dark:text-indigo-400">-Optimizer</span>
-          </span>
+          <span className="text-[15px] font-semibold tracking-tight">CV-Optimizer</span>
         </a>
 
         <div className="flex items-center gap-3">
           <div
             className={cn(
-              'flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium dark:border-slate-800 dark:bg-slate-900',
+              'flex items-center gap-2 rounded-full border border-slate-300/70 bg-paper px-3 py-1 text-xs font-medium dark:border-slate-800 dark:bg-slate-900',
               status.text,
             )}
             role="status"

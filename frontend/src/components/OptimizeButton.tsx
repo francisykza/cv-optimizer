@@ -1,4 +1,4 @@
-import { ArrowRight, LoaderCircle, Sparkles } from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
 
 import { LOADING_STEPS } from '../hooks/useOptimize'
 import { cn } from '../lib/format'
@@ -21,11 +21,11 @@ export function OptimizeButton({ loading, step, disabled, disabledReason, onClic
         disabled={disabled || loading}
         aria-busy={loading}
         className={cn(
-          'focus-ring group relative inline-flex h-14 w-full max-w-md items-center justify-center gap-2.5 overflow-hidden rounded-xl px-8 text-base font-semibold text-white shadow-lg transition-all duration-200',
-          'bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-600 bg-[length:200%_100%] shadow-indigo-600/25',
-          !disabled && !loading && 'hover:-translate-y-0.5 hover:bg-right hover:shadow-xl hover:shadow-indigo-600/30 active:translate-y-0',
+          'focus-ring relative inline-flex h-14 w-full max-w-md items-center justify-center gap-2.5 overflow-hidden rounded-md px-8 text-base font-semibold text-white transition-colors duration-150',
+          'bg-cobalt-600 dark:bg-cobalt-500',
+          !disabled && !loading && 'hover:bg-cobalt-700 active:bg-cobalt-800 dark:hover:bg-cobalt-400',
           loading && 'cursor-wait',
-          disabled && !loading && 'cursor-not-allowed opacity-50 shadow-none',
+          disabled && !loading && 'cursor-not-allowed opacity-50',
         )}
       >
         {/* Brillo que recorre el botón mientras carga */}
@@ -41,11 +41,7 @@ export function OptimizeButton({ loading, step, disabled, disabledReason, onClic
             <span aria-live="polite">{LOADING_STEPS[step]}</span>
           </>
         ) : (
-          <>
-            <Sparkles className="size-5" aria-hidden />
-            Optimizar mi CV
-            <ArrowRight className="size-5 transition-transform group-hover:translate-x-0.5" aria-hidden />
-          </>
+          'Optimizar mi CV'
         )}
       </button>
 
@@ -58,9 +54,9 @@ export function OptimizeButton({ loading, step, disabled, disabledReason, onClic
                 className={cn(
                   'h-1 flex-1 rounded-full transition-colors duration-500',
                   index < step
-                    ? 'bg-indigo-500'
+                    ? 'bg-cobalt-500'
                     : index === step
-                      ? 'animate-pulse bg-indigo-300 dark:bg-indigo-500/50'
+                      ? 'animate-pulse bg-cobalt-300 dark:bg-cobalt-500/50'
                       : 'bg-slate-200 dark:bg-slate-800',
                 )}
               >

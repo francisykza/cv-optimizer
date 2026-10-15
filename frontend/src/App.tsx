@@ -83,16 +83,16 @@ export default function App() {
       <main className="flex-1">
         <Hero />
 
-        <section id="optimizar" aria-label="Optimizar CV" className="mx-auto max-w-5xl space-y-6 px-4 pb-12 sm:px-6">
+        <section id="optimizar" aria-label="Optimizar CV" className="mx-auto max-w-6xl scroll-mt-20 space-y-6 px-4 pb-12 sm:px-6">
           {server.state === 'waking' && (
-            <p className="flex animate-fade-in-up items-center gap-2.5 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20">
+            <p className="flex animate-fade-in-up items-center gap-2.5 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20">
               <Coffee className="size-4 shrink-0" aria-hidden />
               Despertando el servidor (plan gratuito): puede tardar hasta un minuto. Mientras, ve rellenando el
               formulario.
             </p>
           )}
           {server.state === 'offline' && (
-            <p className="flex animate-fade-in-up items-center gap-2.5 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800 ring-1 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20">
+            <p className="flex animate-fade-in-up items-center gap-2.5 rounded-md bg-rose-50 px-4 py-3 text-sm text-rose-800 ring-1 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20">
               <CloudOff className="size-4 shrink-0" aria-hidden />
               No se puede contactar con el servidor. Inténtalo de nuevo en unos minutos.
             </p>
@@ -166,7 +166,7 @@ export default function App() {
       <Footer />
       <Toaster
         position="bottom-center"
-        toastOptions={{ className: '!rounded-xl !text-sm dark:!bg-slate-800 dark:!text-slate-100' }}
+        toastOptions={{ className: '!rounded-md !text-sm dark:!bg-slate-800 dark:!text-slate-100' }}
       />
     </div>
   )

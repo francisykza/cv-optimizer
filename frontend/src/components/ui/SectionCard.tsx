@@ -19,7 +19,7 @@ export function SectionCard({ step, title, description, action, children, classN
         <div className="flex items-start gap-3">
           {step !== undefined && (
             <span
-              className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-white dark:text-slate-900"
+              className="flex size-7 shrink-0 items-center justify-center rounded-full bg-ink text-xs font-semibold text-white dark:bg-white dark:text-slate-900"
               aria-hidden
             >
               {step}

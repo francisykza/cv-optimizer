@@ -68,7 +68,7 @@ export function FileUploader({ file, onFileChange, disabled }: FileUploaderProps
       />
 
       {file ? (
-        <div className="relative flex flex-1 animate-fade-in-up flex-col items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50/50 px-6 py-10 text-center dark:border-emerald-500/20 dark:bg-emerald-500/5">
+        <div className="relative flex flex-1 animate-fade-in-up flex-col items-center justify-center rounded-md border border-emerald-200 bg-emerald-50/50 px-6 py-10 text-center dark:border-emerald-500/20 dark:bg-emerald-500/5">
           <button
             type="button"
             onClick={() => {
@@ -83,7 +83,7 @@ export function FileUploader({ file, onFileChange, disabled }: FileUploaderProps
           </button>
 
           <div className="relative">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-white text-rose-600 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:text-rose-400 dark:ring-slate-700">
+            <div className="flex size-14 items-center justify-center rounded-lg bg-white text-rose-600 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:text-rose-400 dark:ring-slate-700">
               <FileText className="size-7" aria-hidden />
             </div>
             <CheckCircle2
@@ -101,7 +101,7 @@ export function FileUploader({ file, onFileChange, disabled }: FileUploaderProps
             type="button"
             onClick={openPicker}
             disabled={disabled}
-            className="focus-ring mt-4 rounded-md text-sm font-medium text-indigo-600 underline-offset-4 hover:underline disabled:opacity-50 dark:text-indigo-400"
+            className="focus-ring mt-4 rounded-md text-sm font-medium text-cobalt-600 underline-offset-4 hover:underline disabled:opacity-50 dark:text-cobalt-400"
           >
             Cambiar archivo
           </button>
@@ -128,18 +128,18 @@ export function FileUploader({ file, onFileChange, disabled }: FileUploaderProps
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
           className={cn(
-            'focus-ring group flex flex-1 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition-all duration-200',
+            'focus-ring group flex flex-1 cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed px-6 py-10 text-center transition-all duration-200',
             dragging
-              ? 'scale-[1.01] border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
+              ? 'scale-[1.01] border-cobalt-500 bg-cobalt-50 dark:bg-cobalt-500/10'
               : error
                 ? 'border-rose-300 bg-rose-50/50 dark:border-rose-500/40 dark:bg-rose-500/5'
-                : 'border-slate-300 bg-slate-50/50 hover:border-indigo-400 hover:bg-indigo-50/40 dark:border-slate-700 dark:bg-slate-900/40 dark:hover:border-indigo-500/60 dark:hover:bg-indigo-500/5',
+                : 'border-slate-300 bg-slate-50/50 hover:border-cobalt-400 hover:bg-cobalt-50/40 dark:border-slate-700 dark:bg-slate-900/40 dark:hover:border-cobalt-500/60 dark:hover:bg-cobalt-500/5',
             disabled && 'pointer-events-none opacity-60',
           )}
         >
           <div
             className={cn(
-              'flex size-14 items-center justify-center rounded-2xl bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200 transition-transform duration-200 group-hover:-translate-y-0.5 dark:bg-slate-900 dark:text-indigo-400 dark:ring-slate-700',
+              'flex size-14 items-center justify-center rounded-lg bg-white text-cobalt-600 shadow-sm ring-1 ring-slate-200 transition-transform duration-200 group-hover:-translate-y-0.5 dark:bg-slate-900 dark:text-cobalt-400 dark:ring-slate-700',
               dragging && '-translate-y-1',
             )}
           >
@@ -149,10 +149,10 @@ export function FileUploader({ file, onFileChange, disabled }: FileUploaderProps
             {dragging ? 'Suelta el archivo aquí' : 'Arrastra tu CV aquí'}
           </p>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            o <span className="font-medium text-indigo-600 dark:text-indigo-400">haz clic para seleccionarlo</span>
+            o <span className="font-medium text-cobalt-600 dark:text-cobalt-400">haz clic para seleccionarlo</span>
           </p>
           <p id={hintId} className="mt-3 text-xs text-slate-400">
-            PDF · máximo {MAX_PDF_MB} MB · hasta 5 páginas
+            PDF de hasta {MAX_PDF_MB} MB y 5 páginas
           </p>
         </div>
       )}

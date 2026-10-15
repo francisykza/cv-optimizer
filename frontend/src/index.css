@@ -1,16 +1,41 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
+/* Identidad visual: "la mesa del corrector". Papel frío sobre una mesa gris azulada, tinta azul
+   marino y tres rotuladores que son el lenguaje de la app: verde = reformulado, ámbar = no está
+   en tu CV, azul = añadido por ti. */
 @theme {
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'IBM Plex Serif', ui-serif, Georgia, serif;
 
-  --animate-fade-in-up: fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --color-ink: #1b2a4a;
+  --color-desk: #eef1f6;
+  --color-paper: #ffffff;
+  --color-marker-green: #b9f2c8;
+  --color-marker-amber: #ffe08a;
+  --color-marker-blue: #bfe3ff;
+
+  /* Cobalto: el color de las acciones (botón principal, enlaces, foco). 600 = #2747D9. */
+  --color-cobalt-50: #eef2fe;
+  --color-cobalt-100: #dce3fd;
+  --color-cobalt-200: #bcc9fb;
+  --color-cobalt-300: #93a7f7;
+  --color-cobalt-400: #6a86f1;
+  --color-cobalt-500: #4466e6;
+  --color-cobalt-600: #2747d9;
+  --color-cobalt-700: #1f38b4;
+  --color-cobalt-800: #1d3190;
+  --color-cobalt-900: #1c2d72;
+  --color-cobalt-950: #141d47;
+
+  --animate-fade-in-up: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-shimmer: shimmer 1.8s linear infinite;
+  --animate-marker: marker 0.7s cubic-bezier(0.65, 0, 0.35, 1) both;
 
   @keyframes fade-in-up {
     from {
       opacity: 0;
-      transform: translateY(12px);
+      transform: translateY(8px);
     }
     to {
       opacity: 1;
@@ -26,6 +51,16 @@
       background-position: 400px 0;
     }
   }
+
+  /* El trazo del rotulador avanza de izquierda a derecha. */
+  @keyframes marker {
+    from {
+      background-size: 0% 100%;
+    }
+    to {
+      background-size: 100% 100%;
+    }
+  }
 }
 
 @layer base {
@@ -37,43 +72,60 @@
   }
 
   body {
-    @apply bg-slate-50 font-sans text-slate-900 dark:bg-slate-950 dark:text-slate-100;
+    @apply bg-desk font-sans text-ink dark:bg-slate-950 dark:text-slate-100;
   }
 
   ::selection {
-    @apply bg-indigo-200 text-indigo-950 dark:bg-indigo-500/40 dark:text-white;
+    @apply bg-marker-blue text-ink dark:bg-cobalt-500/40 dark:text-white;
   }
 }
 
 @layer components {
-  /* Fondo opaco y sin backdrop-filter: con 8-10 tarjetas en pantalla, el desenfoque de fondo
-     obligaba a recomponer cada una en cada fotograma del scroll (causa de los tirones). */
+  /* Superficie de trabajo: papel plano sobre la mesa, sin sombra. La sombra se reserva para los
+     documentos (.sheet), así la jerarquía se ve: los paneles son herramientas, el CV es el papel.
+     Sin backdrop-filter: con varias tarjetas en pantalla provocaba tirones en el scroll. */
   .card {
-    @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-900/5
-      dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20;
+    @apply rounded-lg border border-slate-300/70 bg-paper dark:border-slate-800 dark:bg-slate-900;
   }
 
-  /* Halo de la portada: el mismo resplandor que antes daba filter: blur(64px), pero con
-     gradientes radiales, que el navegador pinta una vez y no recalcula al hacer scroll. */
-  .hero-glow {
-    background:
-      radial-gradient(closest-side at 35% 55%, rgb(129 140 248 / 0.28), transparent),
-      radial-gradient(closest-side at 55% 50%, rgb(167 139 250 / 0.24), transparent),
-      radial-gradient(closest-side at 72% 45%, rgb(125 211 252 / 0.18), transparent);
+  /* Hoja de papel: el CV de la vista previa y la demo de la portada. */
+  .sheet {
+    @apply rounded-sm bg-paper shadow-[0_1px_2px_rgb(27_42_74/0.08),0_8px_24px_-6px_rgb(27_42_74/0.18)]
+      dark:bg-slate-900 dark:shadow-[0_1px_2px_rgb(0_0_0/0.4),0_8px_24px_-6px_rgb(0_0_0/0.6)];
+  }
+
+  /* Trazo de rotulador: un fondo que no llega arriba del todo, como un subrayado a mano. */
+  .marker {
+    @apply rounded-[2px] px-0.5 text-inherit [box-decoration-break:clone];
+    background-image: linear-gradient(transparent 12%, var(--marker) 12%, var(--marker) 92%, transparent 92%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+  }
+  .marker-green {
+    --marker: var(--color-marker-green);
+  }
+  .marker-amber {
+    --marker: var(--color-marker-amber);
+  }
+  .marker-blue {
+    --marker: var(--color-marker-blue);
   }
 
   @media (prefers-color-scheme: dark) {
-    .hero-glow {
-      background:
-        radial-gradient(closest-side at 35% 55%, rgb(79 70 229 / 0.24), transparent),
-        radial-gradient(closest-side at 55% 50%, rgb(124 58 237 / 0.2), transparent),
-        radial-gradient(closest-side at 72% 45%, rgb(14 165 233 / 0.1), transparent);
+    .marker-green {
+      --marker: rgb(74 222 128 / 0.28);
+    }
+    .marker-amber {
+      --marker: rgb(251 191 36 / 0.3);
+    }
+    .marker-blue {
+      --marker: rgb(96 165 250 / 0.32);
     }
   }
 
   .focus-ring {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2
-      focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950;
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 focus-visible:ring-offset-2
+      focus-visible:ring-offset-desk dark:focus-visible:ring-offset-slate-950;
   }
 
   .skeleton {

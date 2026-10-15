@@ -38,7 +38,7 @@ export function ErrorAlert({ error, onRetry, onUseOwnKey }: ErrorAlertProps) {
   return (
     <div
       role="alert"
-      className="animate-fade-in-up rounded-2xl border border-rose-200 bg-rose-50 p-5 dark:border-rose-500/30 dark:bg-rose-500/10"
+      className="animate-fade-in-up rounded-lg border border-rose-200 bg-rose-50 p-5 dark:border-rose-500/30 dark:bg-rose-500/10"
     >
       <div className="flex gap-3">
         <TriangleAlert className="mt-0.5 size-5 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden />
