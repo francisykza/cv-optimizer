@@ -34,14 +34,44 @@ class Settings(BaseSettings):
     # --- Deduplicación ---
     hunter_dedup_window_days: int = 60
 
-    # --- LLM (Fase 2) ---
+    # --- Juez IA (Fase 2) ---
     groq_api_key: SecretStr | None = None
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    # Llama 3.x es Enterprise desde octubre de 2026: mismos modelos que el backend.
+    groq_model_primary: str = "openai/gpt-oss-120b"
+    groq_model_fallback: str | None = "openai/gpt-oss-20b"
+    hunter_reasoning_effort: str | None = "low"
+    hunter_judge_timeout_s: float = 60.0
+    hunter_judge_max_input_chars: int = 6000
+    # En gpt-oss el razonamiento también consume tokens de salida.
+    hunter_judge_max_output_tokens: int = 2048
+    # Tope propio de tokens/día (ajústalo a la cuota real de tu plan en console.groq.com).
+    hunter_daily_token_budget: int = 150_000
+    # Punto de partida del limitador; se ajusta solo con las cabeceras x-ratelimit-* de Groq.
+    hunter_tokens_per_minute: int = 6000
     jina_api_key: SecretStr | None = None
 
     @field_validator("groq_api_key", "jina_api_key", mode="before")
     @classmethod
     def _strip_api_key(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("hunter_reasoning_effort", "groq_model_fallback", mode="before")
+    @classmethod
+    def _empty_is_none(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @property
+    def server_api_key(self) -> SecretStr | None:
+        key = self.groq_api_key
+        return key if key is not None and key.get_secret_value().strip() else None
+
+    @property
+    def groq_models(self) -> list[str]:
+        models = [self.groq_model_primary]
+        if self.groq_model_fallback and self.groq_model_fallback != self.groq_model_primary:
+            models.append(self.groq_model_fallback)
+        return models
 
     @property
     def db_path(self) -> Path:

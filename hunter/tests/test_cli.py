@@ -5,6 +5,7 @@ import pytest
 
 import hunter.__main__ as cli
 from hunter.config import get_settings
+from tests.fakes import FakeProvider, verdict_payload
 from tests.test_sources import FakeSource
 
 
@@ -15,6 +16,8 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_raw) -> Path:
     monkeypatch.setattr(cli, "ENV_FILE", tmp_path / ".env")
     monkeypatch.setenv("HUNTER_DB_PATH", str(tmp_path / "data" / "hunter.db"))
     monkeypatch.setenv("HUNTER_RETENTION_DAYS", "90")
+    # Nunca la clave real de hunter/.env: sin clave por defecto; los tests del juez ponen una falsa.
+    monkeypatch.setenv("GROQ_API_KEY", "")
     get_settings.cache_clear()
     offers = [
         make_raw(date_posted=None),
@@ -38,12 +41,13 @@ def test_full_cli_flow(isolated: Path, capsys: pytest.CaptureFixture[str]) -> No
     assert "HUNTER_TOKEN=" in (isolated / ".env").read_text(encoding="utf-8")
     assert (isolated / "data" / "profile.md").exists()
 
-    cli.main(["run"])
+    cli.main(["run", "--mode", "ingest_only"])
     out = capsys.readouterr().out
-    assert "nuevas 2" in out and "pendientes del juez 2" in out
+    assert "nuevas 2" in out and "Pendientes del juez: 2" in out and "Juez:" not in out
 
-    cli.main(["run"])  # idempotente
-    assert "nuevas 0 · duplicadas 2" in capsys.readouterr().out
+    cli.main(["run"])  # idempotente; sin clave, el juez no corre y se avisa
+    out = capsys.readouterr().out
+    assert "nuevas 0 · duplicadas 2" in out and "Sin GROQ_API_KEY" in out
 
     exported = isolated / "rules.json"
     cli.main(["rules", "export", str(exported)])
@@ -77,3 +81,40 @@ def test_invalid_rules_file_is_reported(isolated: Path) -> None:
 def test_run_without_init_explains_what_to_do(isolated: Path) -> None:
     with pytest.raises(SystemExit, match="hunter init"):
         cli.main(["run"])
+
+
+def test_judge_commands(
+    isolated: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_fake_key_for_tests_0123456789")
+    get_settings.cache_clear()
+    provider = FakeProvider(
+        verdict_payload(red_flags=[{"text": "Cita inventada", "evidence": "salario de 90.000 euros al año"}])
+    )
+    monkeypatch.setattr(cli, "GroqProvider", lambda **kwargs: provider)
+    cli.main(["init"])
+    cli.main(["run"])
+    out = capsys.readouterr().out
+    assert "Juez: 2 juzgadas (0 desde caché)" in out and "Pendientes del juez: 0" in out
+
+    cli.main(["jobs", "--stage", "judged"])
+    out = capsys.readouterr().out
+    assert "[ 82] APLICAR" in out and "Cita inventada" in out
+    job_id = out.split("id ")[1][:8]
+
+    cli.main(["show", job_id])
+    out = capsys.readouterr().out
+    assert "82/100 · APLICAR" in out and "sin cita verificable" in out and "Stack real: Python" in out
+
+    calls = len(provider.requests)
+    cli.main(["rejudge", job_id])
+    assert len(provider.requests) == calls + 1 and "ok · 1300 tokens" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit, match="No hay ninguna oferta"):
+        cli.main(["show", "zzzz"])
+
+
+def test_judge_only_requires_a_key(isolated: Path) -> None:
+    cli.main(["init"])
+    with pytest.raises(SystemExit, match="GROQ_API_KEY"):
+        cli.main(["run", "--mode", "judge_only"])

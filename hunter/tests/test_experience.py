@@ -63,3 +63,8 @@ def test_returns_matched_text() -> None:
     assert result.years == 4
     assert result.matched_text is not None
     assert "4 anos" in result.matched_text
+
+
+def test_optional_heading_at_end_of_paragraph() -> None:
+    text = "Requisitos: conocimientos de Python. Deseable:\n- 5 años de experiencia con React"
+    assert required_years(text).years is None

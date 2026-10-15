@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer · módulo **Job Hunter** (buscador y filtrador inverso de empleo con IA) |
 | **Tipo de documento** | Especificación técnica (SDD del módulo) |
-| **Versión** | 0.1.1 (Fase 1 implementada) |
+| **Versión** | 0.2.0 (Fases 1 y 2 implementadas) |
 | **Fecha** | 2026-10-15 |
 | **Estado** | Aprobado para implementar la Fase 1 |
 | **Autor** | Francisco Muñoz Dorado |
@@ -16,6 +16,7 @@
 |---|---|---|
 | 0.1.0 | 2026-10-15 | Versión inicial tras la auditoría de la Fase 0: worker local + SQLite, deduplicación en 3 capas, guillotina explicable, juez Groq con structured outputs y presupuesto de tokens, puente al Optimizador por `sessionStorage`. |
 | 0.1.1 | 2026-10-15 | Ajustes al implementar la Fase 1: jobspy ≥ 1.2 registra los fallos en vez de lanzarlos (se capturan sus logs para detectar bloqueos); la capa 3 de dedup no fusiona títulos con distinto nivel (junior/senior); `remote=false` explícito de Arbeitnow cuenta como presencial; idioma `unknown`; "entre X y Y años"; regla `LOC_FOREIGN_COUNTRY` (en el primer run real, LinkedIn devolvió ofertas de EE. UU. para "España" y pasaban por no indicar modalidad); CLI `rules`, `jobs` y `sources`. |
+| 0.2.0 | 2026-10-15 | Fase 2 (juez IA): `LLMVerdict` (lo que se pide) frente a `JobVerdict` (lo que se guarda) con `finalize()`; esquema estricto sin límites de longitud y vuelta a `json_mode` si Groq lo rechaza; citas de ≥ 12 caracteres; juez secuencial; latido de 10 min; caché por `verdict_key` (migración 002); CLI `show`, `rejudge`, `run --retry-failed/--judge-limit`; golden set de 40 ofertas y test live. Run real (16/10/2026): 19/19 ofertas juzgadas con gpt-oss-120b sin 429 ni reparaciones (62.713 tokens), repetición 100 % desde caché (0 tokens), golden live OK con 120b y 20b. Una oferta "USA, remoto" que exigía autorización de trabajo en EE. UU. sacó 78: se amplía `LOC_REMOTE_SCOPE` ("authorization to work in", "work permit for") y el prompt pasa a **v2** con la sección BLOQUEOS (tope de 30 y "skip"); `rules import` re-evalúa también las ya juzgadas. |
 
 ---
 
@@ -602,17 +603,22 @@ desempate. No se muestra como "score" principal.
 ### 7.3 Salida estricta
 1. Petición con **Structured Outputs** de Groq:
    `response_format = {"type": "json_schema", "json_schema": {"name": "job_verdict", "strict": true, "schema": S}}`,
-   donde `S = to_strict_schema(JobVerdict)` (todas las propiedades `required`, `additionalProperties: false`,
-   sin `evidence_verified`, que es de servidor). Si el modelo no admite `strict`, se envía sin él y la
-   validación Pydantic hace de red.
-2. `JobVerdict.model_validate_json()`. Si falla → una llamada de reparación con el patrón de
-   `repair_json` (prompt `judge_repair.v1.md`, incluye el error de validación).
-3. Si vuelve a fallar → `JudgeRecord(status="judge_failed", verdict=None)`; la oferta aparece en la UI
-   sin score, con el botón "Reintentar juicio".
-4. **Post-validación determinista** (mismo espíritu que ADR-010: el estilo se tolera, los hechos no):
-   - `evidence_verified = True` solo si la cita aparece en la descripción (comparación con `fold()` y
-     tolerancia de espacios). Una red flag sin evidencia verificada se muestra atenuada con
-     "sin cita verificable".
+   donde `S = to_strict_schema(LLMVerdict)`: el modelo que se pide al LLM (todas las propiedades
+   `required`, `additionalProperties: false`, sin `evidence_verified`, que es de servidor, y **sin
+   límites de longitud**: `maxLength`/`maxItems` no siempre los admite el modo estricto, así que los
+   aplica `finalize()` recortando en vez de fallar). Si Groq rechaza la petición con esquema, el juez
+   sigue con `json_mode` el resto del run y la validación Pydantic hace de red.
+2. `LLMVerdict.model_validate_json()`. Si falla (o Groq devuelve `json_validate_failed`) → una llamada
+   de reparación (prompt `judge_repair.v1.md`, incluye el error de validación concreto).
+3. Si vuelve a fallar → `judge_failed` (se guarda el error); la oferta aparece sin score y
+   `run --retry-failed` (o el botón "Reintentar juicio" en la UI) la devuelve a la cola. Un fallo nunca
+   se sirve desde la caché.
+4. **Post-validación determinista** (`finalize()`, mismo espíritu que ADR-010: el estilo se tolera, los
+   hechos no):
+   - Puntuación acotada a 0–100; textos y listas recortados a su máximo.
+   - `evidence_verified = True` solo si la cita aparece en la descripción (sin tildes, mayúsculas,
+     comillas ni espacios extra) y tiene al menos 12 caracteres ("Python" no prueba nada). Una flag
+     sin evidencia verificada se muestra atenuada con "sin cita verificable".
    - Coherencia: `verdict="apply"` con `match_score < 50` → `maybe`; `verdict="skip"` con
      `match_score ≥ 75` → `maybe`.
    - Listas deduplicadas y recortadas a su máximo; tecnologías normalizadas (`fold`).
@@ -621,7 +627,8 @@ desempate. No se muestra como "score" principal.
 ### 7.4 Protección de rate-limits y presupuesto
 
 ```
-cola (orden: prescore desc) ─► Semaphore(HUNTER_JUDGE_CONCURRENCY=1)
+cola (orden: prescore desc, de una en una)
+     ─► caché de veredictos (acierto = 0 tokens)
      ─► BudgetGuard (tokens del día < HUNTER_DAILY_TOKEN_BUDGET)
      ─► AdaptiveLimiter.acquire(coste estimado) ─► GroqProvider.complete()
      ─► AdaptiveLimiter.observe(cabeceras x-ratelimit-*)
@@ -710,7 +717,7 @@ Cuerpo: `{ "mode": "full" | "ingest_only" | "judge_only" }`. Respuesta `202`:
 ```json
 { "run_id": "a1b2c3...", "status": "running" }
 ```
-Errores: `409 RUN_IN_PROGRESS` (hay otro run con `heartbeat_at` de hace < 2 min).
+Errores: `409 RUN_IN_PROGRESS` (hay otro run con `heartbeat_at` de hace < 10 min).
 
 ### `GET /api/v1/runs/{id}` · `GET /api/v1/runs?limit=10`
 Devuelve `Run` (§4.1). Ejemplo resumido:
@@ -802,7 +809,7 @@ Prepara el texto para el Optimizador. Si la descripción tiene < 200 caracteres,
 | Groq 429/5xx puntual | Reintentos de `GroqProvider` + modelo de reserva. |
 | Cuota diaria de Groq o presupuesto agotados | El juez se detiene limpio; `pending_judge` se retoma en el siguiente run. |
 | JSON inválido del juez | Reparación 1 vez → `judge_failed` (la UI no se rompe). |
-| El PC se apaga a mitad de run | Cada oferta se confirma en su propia transacción; el siguiente run ve un `running` sin latido (> 2 min) y lo marca `failed` antes de empezar. Reanudable: nada se procesa dos veces. |
+| El PC se apaga a mitad de run | Cada oferta se confirma en su propia transacción; el siguiente run ve un `running` sin latido (> 10 min: entre dos latidos del juez caben una espera del limitador y una llamada) y lo marca `failed` antes de empezar. Reanudable: nada se procesa dos veces. |
 | La API local no está arrancada | La vista Buscador muestra cómo arrancarla (`python -m hunter serve`); el Optimizador no se ve afectado. |
 
 **Idempotencia:** volver a ejecutar un run con los mismos datos no crea ofertas, no duplica veredictos y
@@ -902,7 +909,8 @@ No cambia nada en `POST /api/v1/optimize` ni en `useOptimize`.
 | `HUNTER_TOKEN` | (lo genera `init`) | Token local. |
 | `HUNTER_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | CORS. |
 | `HUNTER_DAILY_TOKEN_BUDGET` | `150000` | Tokens/día para el juez (ajustar a la cuota real del plan en console.groq.com). |
-| `HUNTER_JUDGE_CONCURRENCY` | `1` | Llamadas simultáneas al juez. |
+| `HUNTER_TOKENS_PER_MINUTE` | `6000` | Punto de partida del limitador; se ajusta solo con `x-ratelimit-limit-tokens`. (El juez es secuencial: en el free tier la concurrencia no aporta nada.) |
+| `HUNTER_JUDGE_TIMEOUT_S` | `60` | Timeout de cada llamada a Groq. |
 | `HUNTER_JUDGE_MAX_INPUT_CHARS` | `6000` | Recorte de la descripción. |
 | `HUNTER_JUDGE_MAX_OUTPUT_TOKENS` | `2048` | Incluye el razonamiento de gpt-oss. |
 | `HUNTER_REASONING_EFFORT` | `low` | Igual que el backend. |

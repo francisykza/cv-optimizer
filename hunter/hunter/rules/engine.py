@@ -140,9 +140,12 @@ _SCOPE_PATTERNS = [
         r"\b(?:remote|remotely|remoto|teletrabajo)\s+(?:within|from|desde|only\s+in)\s+" + _PLACE_CAPTURE
     ),
     re.compile(
-        r"\b(?:authorized|authorised|eligible|right|permit|permiso)\s+(?:to\s+work|de\s+trabajo|para\s+trabajar)\s+"
-        r"(?:in|en)\s+" + _PLACE_CAPTURE
+        # "authorized/eligible to work in", "authorization to work in" (visto en una oferta real),
+        # "right to work in", "permiso de trabajo en"
+        r"\b(?:authorized|authorised|authorization|authorisation|eligible|eligibility|right|permit|permiso)\s+"
+        r"(?:to\s+work|de\s+trabajo|para\s+trabajar)\s+(?:in|en)\s+" + _PLACE_CAPTURE
     ),
+    re.compile(r"\bwork\s+(?:authorization|authorisation|permit)\s+(?:in|for)\s+" + _PLACE_CAPTURE),
 ]
 
 

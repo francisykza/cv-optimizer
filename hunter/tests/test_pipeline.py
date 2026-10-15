@@ -110,7 +110,7 @@ async def test_live_run_blocks_and_orphans_are_failed(repo, rules) -> None:
         await pipeline(repo, rules).run([])
 
     repo.conn.execute(
-        "UPDATE runs SET heartbeat_at = ? WHERE id = 'live'", ((now - timedelta(minutes=5)).isoformat(),)
+        "UPDATE runs SET heartbeat_at = ? WHERE id = 'live'", ((now - timedelta(minutes=15)).isoformat(),)
     )
     run = await pipeline(repo, rules).run([])
     assert run.status == "ok"
@@ -173,3 +173,163 @@ async def test_purge_never_touches_pending_or_managed(repo, rules, make_raw) -> 
     await pipeline(repo, rules).run([FakeSource("indeed", "ok", [make_raw(date_posted=None)])])
     future = utcnow() + timedelta(days=1)
     assert repo.purge(older_than=future, fingerprints_older_than=future) == 0
+
+
+# --- Juez IA en el pipeline (Fase 2) -----------------------------------------------------------
+
+
+def _judge(repo, rules, provider, budget: int = 100_000):
+    from hunter.judge.judge import Judge, JudgeConfig, JudgeContext
+    from hunter.judge.limiter import AdaptiveLimiter, BudgetGuard
+
+    return Judge(
+        provider,
+        repo,
+        AdaptiveLimiter(tokens_per_minute=10**6),
+        BudgetGuard(repo, budget),
+        JudgeContext.from_rules(rules, "Python, LLM, RAG"),
+        JudgeConfig(),
+    )
+
+
+def _distinct_offers(make_raw, n: int) -> list:
+    topics = ["logística", "banca", "salud", "turismo", "energía", "educación", "seguros", "retail"]
+    return [
+        make_raw(
+            title=f"Junior AI Engineer {topics[i]}",
+            date_posted=None,
+            description=f"Equipo de {topics[i]} en Málaga busca perfil junior de Python para construir "
+            f"servicios con LLM y RAG aplicados al sector {topics[i]}. Proyecto {i}: integración de datos "
+            f"del sector {topics[i]}, pruebas automáticas, despliegue en la nube y mentoría semanal "
+            f"con el equipo de {topics[i]}, revisiones de código y formación continua en {topics[i]}.",
+        )
+        for i in range(n)
+    ]
+
+
+async def test_full_run_judges_and_ranks(repo, rules, make_raw) -> None:
+    from tests.fakes import FakeProvider, verdict_payload
+
+    provider = FakeProvider(
+        verdict_payload(match_score=90), verdict_payload(match_score=60, verdict="maybe"), repeat_last=False
+    )
+    run = await pipeline(repo, rules).run(
+        [FakeSource("indeed", "ok", _distinct_offers(make_raw, 2))],
+        mode="full",
+        judge=_judge(repo, rules, provider),
+    )
+    assert run.status == "ok"
+    assert (run.counts.judged, run.counts.pending_judge, run.tokens_used) == (2, 0, 2600)
+    judged = sorted(
+        repo.jobs_by_stage("judged", utcnow() - timedelta(days=1)), key=lambda j: -(j.rank_score or 0)
+    )
+    assert judged[0].rank_score > judged[1].rank_score and judged[0].verdict_key
+
+    again = await pipeline(repo, rules).run(
+        [FakeSource("indeed", "ok", _distinct_offers(make_raw, 2))],
+        mode="full",
+        judge=_judge(repo, rules, provider),
+    )
+    assert again.tokens_used == 0 and len(provider.requests) == 2  # todo duplicado: 0 tokens
+
+
+async def test_rejudging_after_rules_round_trip_uses_cache(repo, rules, make_raw) -> None:
+    from tests.fakes import FakeProvider, verdict_payload
+
+    provider = FakeProvider(verdict_payload())
+    offer = make_raw(description=LONG_DESCRIPTION + " Requisitos: 2 años de experiencia.", date_posted=None)
+    await pipeline(repo, rules).run(
+        [FakeSource("indeed", "ok", [offer])], mode="full", judge=_judge(repo, rules, provider)
+    )
+    # La oferta juzgada vuelve a pendiente (p. ej. se purgó el estado o se restauró): sin tokens.
+    repo.conn.execute("UPDATE jobs SET stage = 'pending_judge'")
+    run = await pipeline(repo, rules).run([], mode="judge_only", judge=_judge(repo, rules, provider))
+    assert run.counts.cache_hits == 1 and run.tokens_used == 0 and len(provider.requests) == 1
+
+
+async def test_quota_exhausted_stops_and_keeps_queue(repo, rules, make_raw) -> None:
+    from app.core.exceptions import UpstreamRateLimitedError
+
+    from tests.fakes import FakeProvider, verdict_payload
+
+    provider = FakeProvider(
+        verdict_payload(), UpstreamRateLimitedError(retry_after_s=7200), repeat_last=False
+    )
+    run = await pipeline(repo, rules).run(
+        [FakeSource("indeed", "ok", _distinct_offers(make_raw, 4))],
+        mode="full",
+        judge=_judge(repo, rules, provider),
+    )
+    assert run.status == "partial" and run.budget_exhausted
+    assert run.counts.judged == 1 and run.counts.pending_judge == 3
+    assert "Cuota de Groq agotada" in run.error
+
+
+async def test_daily_budget_stops_before_spending(repo, rules, make_raw) -> None:
+    from tests.fakes import FakeProvider, verdict_payload
+
+    provider = FakeProvider(verdict_payload())
+    run = await pipeline(repo, rules).run(
+        [FakeSource("indeed", "ok", _distinct_offers(make_raw, 3))],
+        mode="full",
+        judge=_judge(repo, rules, provider, budget=4000),
+    )
+    assert run.budget_exhausted and run.counts.judged >= 1 and run.counts.pending_judge >= 1
+    assert "Presupuesto diario" in run.error
+
+
+async def test_consecutive_transient_errors_stop_the_judge(repo, rules, make_raw) -> None:
+    from app.core.exceptions import LLMTimeoutError
+
+    from tests.fakes import FakeProvider
+
+    run = await pipeline(repo, rules).run(
+        [FakeSource("indeed", "ok", _distinct_offers(make_raw, 5))],
+        mode="full",
+        judge=_judge(repo, rules, FakeProvider(LLMTimeoutError())),
+    )
+    assert run.status == "partial" and "3 veces seguidas" in run.error
+    assert run.counts.pending_judge == 5 and not run.budget_exhausted
+
+
+async def test_judge_failed_is_recorded_and_can_be_retried(repo, rules, make_raw) -> None:
+    from tests.fakes import FakeProvider, verdict_payload
+
+    await pipeline(repo, rules).run(
+        [FakeSource("indeed", "ok", _distinct_offers(make_raw, 1))],
+        mode="full",
+        judge=_judge(repo, rules, FakeProvider("roto")),
+    )
+    failed = repo.jobs_by_stage("judge_failed", utcnow() - timedelta(days=1))
+    assert len(failed) == 1 and "JSON no válido" in failed[0].judge_error
+    assert repo.reset_failed() == 1
+    run = await pipeline(repo, rules).run(
+        [], mode="judge_only", judge=_judge(repo, rules, FakeProvider(verdict_payload()))
+    )
+    assert run.counts.judged == 1 and run.counts.cache_hits == 0  # un fallo nunca se sirve desde caché
+
+
+async def test_full_run_without_key_reports_it(repo, rules, make_raw) -> None:
+    run = await pipeline(repo, rules).run([FakeSource("indeed", "ok", [make_raw()])], mode="full", judge=None)
+    assert run.status == "partial" and "GROQ_API_KEY" in run.error and run.counts.pending_judge == 1
+
+
+async def test_judged_offer_breaking_new_rules_is_discarded_and_comes_back_from_cache(
+    repo, rules, make_raw
+) -> None:
+    from tests.fakes import FakeProvider, verdict_payload
+
+    provider = FakeProvider(verdict_payload())
+    offer = make_raw(description=LONG_DESCRIPTION + " Requisitos: 2 años de experiencia.", date_posted=None)
+    await pipeline(repo, rules).run(
+        [FakeSource("indeed", "ok", [offer])], mode="full", judge=_judge(repo, rules, provider)
+    )
+    stricter = rules.model_copy(
+        update={"experience": rules.experience.model_copy(update={"max_years_required": 1})}
+    )
+    assert pipeline(repo, stricter).reevaluate(window_days=7)[2] == 1
+    assert repo.count_by_stage() == {"discarded": 1}
+
+    assert pipeline(repo, rules).reevaluate(window_days=7)[1] == 1  # vuelve a pasar
+    run = await pipeline(repo, rules).run([], mode="judge_only", judge=_judge(repo, rules, provider))
+    assert run.counts.cache_hits == 1 and run.tokens_used == 0 and len(provider.requests) == 1

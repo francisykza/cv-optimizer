@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import random
+import re
 
 import httpx
 from pydantic import SecretStr
@@ -15,7 +16,14 @@ from app.core.exceptions import (
     LLMUpstreamError,
     UpstreamRateLimitedError,
 )
-from app.services.llm.base import LLMProvider, LLMRequest, LLMResponse, Mode, TokenUsage
+from app.services.llm.base import (
+    LLMProvider,
+    LLMRequest,
+    LLMResponse,
+    Mode,
+    RateLimitInfo,
+    TokenUsage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +86,9 @@ class GroqProvider(LLMProvider):
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,
         }
-        if request.json_mode:
+        if request.json_schema is not None:
+            payload["response_format"] = {"type": "json_schema", "json_schema": request.json_schema}
+        elif request.json_mode:
             payload["response_format"] = {"type": "json_object"}
         if self._reasoning_effort and is_reasoning_model(model):
             # Solo los modelos de razonamiento aceptan este parámetro; al resto les daría un 400.
@@ -110,12 +120,12 @@ class GroqProvider(LLMProvider):
                 if response.status_code == 200:
                     return self._parse(response, model)
                 self._raise_if_not_retryable(response)
+                retry_after = _parse_retry_after(response)
                 error = (
-                    UpstreamRateLimitedError()
+                    UpstreamRateLimitedError(retry_after_s=retry_after)
                     if response.status_code == 429
                     else LLMUpstreamError()
                 )
-                retry_after = _parse_retry_after(response)
                 if retry_after is not None and retry_after > _MAX_RETRY_AFTER_S:
                     break  # Esperar tanto no compensa: pasamos al modelo de reserva.
 
@@ -163,6 +173,7 @@ class GroqProvider(LLMProvider):
                 input=int(usage.get("prompt_tokens", 0)),
                 output=int(usage.get("completion_tokens", 0)),
             ),
+            rate_limits=parse_rate_limits(response.headers),
         )
 
 
@@ -201,6 +212,43 @@ def _parse_retry_after(response: httpx.Response) -> float | None:
         return max(float(value), 0.0)
     except ValueError:
         return None
+
+
+_DURATION_PART = re.compile(r"(\d+(?:\.\d+)?)(ms|h|m|s)")
+_DURATION_UNITS = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0}
+
+
+def parse_duration(value: str | None) -> float | None:
+    """Duraciones de Groq ("7.66s", "2m59.56s", "1h2m3s", "120ms") a segundos."""
+    if not value:
+        return None
+    value = value.strip()
+    parts = _DURATION_PART.findall(value)
+    if not parts or "".join(n + u for n, u in parts) != value:
+        try:
+            return max(float(value), 0.0)  # sin unidades: segundos
+        except ValueError:
+            return None
+    return sum(float(n) * _DURATION_UNITS[u] for n, u in parts)
+
+
+def _header_int(headers: httpx.Headers, name: str) -> int | None:
+    try:
+        return int(float(headers[name]))
+    except (KeyError, ValueError):
+        return None
+
+
+def parse_rate_limits(headers: httpx.Headers) -> RateLimitInfo | None:
+    info = RateLimitInfo(
+        limit_requests=_header_int(headers, "x-ratelimit-limit-requests"),
+        remaining_requests=_header_int(headers, "x-ratelimit-remaining-requests"),
+        reset_requests_s=parse_duration(headers.get("x-ratelimit-reset-requests")),
+        limit_tokens=_header_int(headers, "x-ratelimit-limit-tokens"),
+        remaining_tokens=_header_int(headers, "x-ratelimit-remaining-tokens"),
+        reset_tokens_s=parse_duration(headers.get("x-ratelimit-reset-tokens")),
+    )
+    return None if info == RateLimitInfo() else info
 
 
 def _groq_error_code(response: httpx.Response) -> str | None:

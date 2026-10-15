@@ -106,6 +106,11 @@ class UpstreamRateLimitedError(AppError):
     code = "UPSTREAM_RATE_LIMITED"
     message = "El proveedor de IA está saturado. Inténtalo en unos minutos."
 
+    def __init__(self, message: str | None = None, retry_after_s: float | None = None) -> None:
+        # Segundos que pide esperar el proveedor (Retry-After), si los indicó.
+        self.retry_after_s = retry_after_s
+        super().__init__(message)
+
 
 class LLMUpstreamError(AppError):
     status_code = 502

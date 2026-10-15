@@ -1,8 +1,9 @@
 """CLI del Job Hunter: `python -m hunter <comando>` (desde la carpeta `hunter/`).
 
-Comandos de la Fase 1:
+Comandos:
   init                  crea data/, el token local, el perfil y activa las reglas de ejemplo
-  run                   ingesta + guillotina (las que pasan quedan pendientes del juez de la Fase 2)
+  run                   ingesta + guillotina + juez IA (--mode ingest_only: sin tokens)
+  show ID / rejudge ID  veredicto de una oferta / volver a juzgarla sin caché
   rules show|export     muestra o exporta las reglas activas
   rules import FICHERO  valida, guarda y activa unas reglas, y re-evalúa las ofertas recientes
   simulate FICHERO      qué cambiaría con otras reglas (sin guardar nada ni gastar tokens)
@@ -24,9 +25,13 @@ from pathlib import Path
 
 import httpx
 from app.core.logging import RedactSecretsFilter, setup_logging
+from app.services.llm.groq import GroqProvider
 from pydantic import ValidationError
 
 from hunter.config import HUNTER_ROOT, Settings, get_settings
+from hunter.judge.judge import Judge, JudgeConfig, JudgeContext, JudgeOutcome, JudgeStoppedError
+from hunter.judge.limiter import AdaptiveLimiter, BudgetGuard, QuotaExhaustedError
+from hunter.judge.schema import JobVerdict
 from hunter.models import Run
 from hunter.pipeline.prescore import load_profile_terms
 from hunter.pipeline.run import Pipeline, PipelineConfig, RunInProgressError
@@ -35,7 +40,7 @@ from hunter.rules.schema import GoldenRules
 from hunter.sources import breaker
 from hunter.sources.registry import build_sources
 from hunter.store.db import connect
-from hunter.store.repository import Repository, utcnow
+from hunter.store.repository import Repository, StoredJob, utcnow
 
 EXAMPLE_RULES = HUNTER_ROOT / "rules.example.json"
 EXAMPLE_PROFILE = HUNTER_ROOT / "profile.example.md"
@@ -139,18 +144,67 @@ def _profile_path(rules: GoldenRules) -> Path:
     return path if path.is_absolute() else HUNTER_ROOT / path
 
 
+def _build_judge(
+    repo: Repository, rules: GoldenRules, settings: Settings, client: httpx.AsyncClient
+) -> Judge | None:
+    key = settings.server_api_key
+    if key is None:
+        return None
+    provider = GroqProvider(
+        client=client,
+        api_key=key,
+        models=settings.groq_models,
+        # "byok": es la clave del propio usuario; un 401 se informa como clave no válida.
+        mode="byok",
+        base_url=settings.groq_base_url,
+        timeout_s=settings.hunter_judge_timeout_s,
+        reasoning_effort=settings.hunter_reasoning_effort,
+    )
+    profile = _profile_path(rules)
+    try:
+        profile_text = profile.read_text(encoding="utf-8")
+    except OSError:
+        sys.exit(f"No encuentro el perfil {profile}. Ejecuta `python -m hunter init` y complétalo.")
+    return Judge(
+        provider,
+        repo,
+        AdaptiveLimiter(tokens_per_minute=settings.hunter_tokens_per_minute),
+        BudgetGuard(repo, settings.hunter_daily_token_budget),
+        JudgeContext.from_rules(rules, profile_text),
+        JudgeConfig(
+            model=settings.groq_model_primary,
+            max_input_chars=settings.hunter_judge_max_input_chars,
+            max_output_tokens=settings.hunter_judge_max_output_tokens,
+        ),
+    )
+
+
+def _llm_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0), follow_redirects=True)
+
+
 def cmd_run(args: argparse.Namespace, settings: Settings) -> None:
     repo = _repo(settings)
     rules = _require_rules(repo)
     pipeline = _pipeline(repo, rules, settings)
+    if args.mode == "judge_only" and settings.server_api_key is None:
+        sys.exit("Falta GROQ_API_KEY en hunter/.env para ejecutar el juez.")
+    if args.retry_failed:
+        print(f"{repo.reset_failed()} ofertas fallidas vuelven a la cola del juez.")
 
     async def go() -> Run:
-        timeout = httpx.Timeout(30.0, connect=10.0)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        async with _llm_client() as client:
             sources = build_sources(rules, client, settings.hunter_source_pause_s)
             if args.only:
                 sources = [s for s in sources if s.name in args.only]
-            return await pipeline.run(sources, trigger=args.trigger, mode=args.mode)
+            judge = _build_judge(repo, rules, settings, client) if args.mode != "ingest_only" else None
+            return await pipeline.run(
+                sources if args.mode != "judge_only" else [],
+                trigger=args.trigger,
+                mode=args.mode,
+                judge=judge,
+                judge_limit=args.judge_limit,
+            )
 
     try:
         run = asyncio.run(go())
@@ -158,12 +212,12 @@ def cmd_run(args: argparse.Namespace, settings: Settings) -> None:
         sys.exit(str(exc))
     if settings.hunter_retention_days > 0:
         _purge(repo, settings)
-    _print_run(run)
+    _print_run(run, BudgetGuard(repo, settings.hunter_daily_token_budget))
     if run.status == "failed":
         sys.exit(1)
 
 
-def _print_run(run: Run) -> None:
+def _print_run(run: Run, budget: BudgetGuard) -> None:
     c = run.counts
     print(f"\nRun {run.id[:8]} · {run.status.upper()} · reglas {run.rules_version}")
     for s in run.sources:
@@ -176,10 +230,18 @@ def _print_run(run: Run) -> None:
         if s.retry_at:
             line += f" · reintento {s.retry_at.astimezone():%d/%m %H:%M}"
         print(line)
-    print(
-        f"  Leídas {c.fetched} · nuevas {c.new} · duplicadas {c.duplicates} · "
-        f"descartadas {c.discarded} · pendientes del juez {c.pending_judge}"
-    )
+    if run.mode != "judge_only":
+        print(
+            f"  Leídas {c.fetched} · nuevas {c.new} · duplicadas {c.duplicates} · descartadas {c.discarded}"
+        )
+    if run.mode != "ingest_only":
+        print(
+            f"  Juez: {c.judged} juzgadas ({c.cache_hits} desde caché) · {c.judge_failed} fallidas · "
+            f"{run.tokens_used} tokens · quedan {budget.remaining()} de presupuesto hoy"
+        )
+    print(f"  Pendientes del juez: {c.pending_judge}")
+    if run.error:
+        print(f"  ⚠ {run.error}")
 
 
 def cmd_rules(args: argparse.Namespace, settings: Settings) -> None:
@@ -226,26 +288,121 @@ def cmd_simulate(args: argparse.Namespace, settings: Settings) -> None:
                 print(f"  - {item.title} · {item.company} — {item.rule_label}")
 
 
+_VERDICT_LABEL = {"apply": "APLICAR", "maybe": "QUIZÁ", "skip": "NO"}
+
+
+def _verdict(repo: Repository, job: StoredJob) -> JobVerdict | None:
+    stored = repo.cached_verdict(job.verdict_key) if job.verdict_key else None
+    if stored is None or not stored.verdict_json:
+        return None
+    return JobVerdict.model_validate_json(stored.verdict_json)
+
+
 def cmd_jobs(args: argparse.Namespace, settings: Settings) -> None:
     repo = _repo(settings)
     jobs = repo.jobs_seen_since(utcnow() - timedelta(days=args.days), (args.stage,))
     if args.stage == "pending_judge":
         jobs.sort(key=lambda j: j.prescore, reverse=True)
-    for job in jobs[: args.limit]:
-        line = (
-            f"[{job.prescore:>3}] {job.title} · {job.company} · {job.location or '¿?'} ({job.facts.modality})"
+    if args.stage == "judged":
+        jobs.sort(key=lambda j: j.rank_score or 0, reverse=True)
+        min_score = (
+            args.min_score if args.min_score is not None else _require_rules(repo).judge.min_score_to_show
         )
-        print(line)
+    for job in jobs[: args.limit]:
+        if args.stage == "judged":
+            verdict = _verdict(repo, job)
+            if verdict is None or verdict.match_score < min_score:
+                continue
+            print(
+                f"[{verdict.match_score:>3}] {_VERDICT_LABEL[verdict.verdict]:<7} {job.title} · "
+                f"{job.company} · {job.location or '¿?'} ({job.facts.modality}) · id {job.id[:8]}"
+            )
+            print(f"       {verdict.summary}")
+            if verdict.red_flags:
+                print("       ⚑ " + " · ".join(f.text for f in verdict.red_flags[:3]))
+        else:
+            print(
+                f"[{job.prescore:>3}] {job.title} · {job.company} · {job.location or '¿?'} "
+                f"({job.facts.modality}) · id {job.id[:8]}"
+            )
         if args.stage == "discarded":
             g = repo.latest_guillotine(job.id)
             if g and g.rule_label:
                 print(f"       ✗ {g.rule_label}" + (f" — «{g.matched_text[:90]}»" if g.matched_text else ""))
+        if args.stage == "judge_failed" and job.judge_error:
+            print(f"       ✗ {job.judge_error}")
         print(f"       {job.url}")
     print(
         f"\n{min(len(jobs), args.limit)} de {len(jobs)} ofertas en '{args.stage}' "
         f"(últimos {args.days} días). "
         f"Total por etapa: {repo.count_by_stage()}"
     )
+
+
+def _require_job(repo: Repository, job_id: str) -> StoredJob:
+    job = repo.get_job(job_id)
+    if job is None:
+        sys.exit(f"No hay ninguna oferta con id {job_id}.")
+    return job
+
+
+def cmd_show(args: argparse.Namespace, settings: Settings) -> None:
+    repo = _repo(settings)
+    job = _require_job(repo, args.job_id)
+    print(f"{job.title} · {job.company} · {job.location or '¿?'} ({job.facts.modality})")
+    print(f"Etapa: {job.stage} · pre-score {job.prescore} · vista {job.times_seen} veces · {job.url}")
+    verdict = _verdict(repo, job)
+    if verdict is None:
+        g = repo.latest_guillotine(job.id)
+        if g and g.rule_label:
+            print(f"Descartada: {g.rule_label}")
+        if job.judge_error:
+            print(f"Juez: {job.judge_error}")
+        return
+    print(
+        f"\n{verdict.match_score}/100 · {_VERDICT_LABEL[verdict.verdict]} · "
+        f"nivel {verdict.seniority_detected} ({verdict.seniority_fit}) · ranking {job.rank_score}"
+    )
+    print(verdict.summary)
+    for title, flags in (("A favor", verdict.green_flags), ("Alertas", verdict.red_flags)):
+        if flags:
+            print(f"\n{title}:")
+            for flag in flags:
+                mark = "✓" if flag.evidence_verified else "· sin cita verificable"
+                quote = f" — «{flag.evidence}»" if flag.evidence else ""
+                print(f"  - {flag.text}{quote} {mark}")
+    print(f"\nStack real: {', '.join(verdict.stack_core) or '—'}")
+    print(f"Stack inflado: {', '.join(verdict.stack_inflated) or '—'}")
+    print(f"Le falta: {', '.join(verdict.missing_must_haves) or '—'}")
+
+
+def cmd_rejudge(args: argparse.Namespace, settings: Settings) -> None:
+    repo = _repo(settings)
+    rules = _require_rules(repo)
+    job = _require_job(repo, args.job_id)
+    if settings.server_api_key is None:
+        sys.exit("Falta GROQ_API_KEY en hunter/.env para ejecutar el juez.")
+
+    async def go() -> JudgeOutcome:
+        async with _llm_client() as client:
+            judge = _build_judge(repo, rules, settings, client)
+            if judge is None:
+                sys.exit("Falta GROQ_API_KEY en hunter/.env para ejecutar el juez.")
+            outcome = await judge.judge(job, force=True)
+            if outcome.status != "error":
+                _pipeline(repo, rules, settings)._save_outcome(job, outcome, judge)
+                if job.stage == "discarded":  # el veredicto se guarda, pero manda la guillotina
+                    repo.set_stage(job.id, "discarded")
+            return outcome
+
+    try:
+        outcome = asyncio.run(go())
+    except (JudgeStoppedError, QuotaExhaustedError) as exc:
+        sys.exit(f"El juez se ha detenido: {exc}")
+    if outcome.status == "error":
+        sys.exit(f"Error transitorio del juez ({outcome.error}); prueba más tarde.")
+    print(f"{outcome.status} · {outcome.tokens} tokens · {outcome.model}")
+    cmd_show(args, settings)
 
 
 def cmd_sources(args: argparse.Namespace, settings: Settings) -> None:
@@ -282,17 +439,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("init", help="prepara data/, el token, el perfil y las reglas de ejemplo")
 
-    run = sub.add_parser("run", help="busca ofertas y aplica la guillotina")
+    run = sub.add_parser("run", help="busca ofertas, aplica la guillotina y las juzga con IA")
     run.add_argument(
         "--mode",
-        choices=["ingest_only"],
-        default="ingest_only",
-        help="el juez IA (full/judge_only) llega en la Fase 2",
+        choices=["full", "ingest_only", "judge_only"],
+        default="full",
+        help="full: todo · ingest_only: sin juez (0 tokens) · judge_only: solo la cola del juez",
     )
     run.add_argument("--trigger", choices=["cli", "scheduler"], default="cli")
     run.add_argument(
         "--only", nargs="+", metavar="FUENTE", help="limitar a estas fuentes (p. ej. indeed remotive)"
     )
+    run.add_argument("--judge-limit", type=int, metavar="N", help="juzgar como mucho N ofertas")
+    run.add_argument("--retry-failed", action="store_true", help="devuelve las fallidas a la cola del juez")
 
     rules = sub.add_parser("rules", help="ver, exportar o importar las Reglas de Oro")
     rules.add_argument("action", choices=["show", "export", "import"])
@@ -309,6 +468,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     jobs.add_argument("--days", type=int, default=7)
     jobs.add_argument("--limit", type=int, default=30)
+    jobs.add_argument("--min-score", type=int, help="en 'judged': por defecto, judge.min_score_to_show")
+
+    show = sub.add_parser("show", help="detalle de una oferta y su veredicto")
+    show.add_argument("job_id", help="id o sus primeros caracteres")
+    rejudge = sub.add_parser("rejudge", help="vuelve a juzgar una oferta ignorando la caché")
+    rejudge.add_argument("job_id")
 
     sub.add_parser("sources", help="estado de las fuentes (circuit breaker)")
     sub.add_parser("purge", help="borra ofertas antiguas sin gestionar")
@@ -321,6 +486,8 @@ COMMANDS = {
     "rules": cmd_rules,
     "simulate": cmd_simulate,
     "jobs": cmd_jobs,
+    "show": cmd_show,
+    "rejudge": cmd_rejudge,
     "sources": cmd_sources,
     "purge": cmd_purge,
 }

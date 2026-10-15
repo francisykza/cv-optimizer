@@ -102,12 +102,15 @@ def _sentences(description: str) -> list[tuple[str, bool]]:
         line = fold(_BULLET.sub("", raw_line))
         if not line:
             continue
-        if _is_heading(line):
-            optional_section = bool(_OPTIONAL.search(line))
-            continue
+        # El encabezado puede ir solo en su línea ("Deseable:") o al final de un párrafo
+        # ("...conocimientos de Python. Deseable:"): se mira frase a frase.
         for sentence in _SENTENCE_SPLIT.split(line):
-            if sentence:
-                out.append((sentence, optional_section))
+            if not sentence:
+                continue
+            if _is_heading(sentence):
+                optional_section = bool(_OPTIONAL.search(sentence))
+                continue
+            out.append((sentence, optional_section))
     return out
 
 

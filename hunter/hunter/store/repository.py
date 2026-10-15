@@ -49,6 +49,22 @@ class StoredJob:
     times_seen: int
     facts: JobFacts
     url: str
+    desc_sha256: str = ""
+    verdict_key: str | None = None
+    rank_score: float | None = None
+    judge_error: str | None = None
+
+
+@dataclass(frozen=True)
+class StoredVerdict:
+    cache_key: str
+    status: str  # "ok" | "judge_failed"
+    verdict_json: str | None
+    model: str
+    prompt_version: str
+    tokens_in: int
+    tokens_out: int
+    created_at: datetime
 
 
 class Repository:
@@ -266,6 +282,92 @@ class Repository:
                 salary_currency=row["salary_currency"],
                 location=row["location"],
             ),
+            desc_sha256=row["desc_sha256"],
+            verdict_key=row["verdict_key"],
+            rank_score=row["rank_score"],
+            judge_error=row["judge_error"],
+        )
+
+    # --- Juez y caché de veredictos ------------------------------------------------------
+
+    def jobs_by_stage(self, stage: Stage, since: datetime) -> list[StoredJob]:
+        """Ofertas de una etapa vistas desde `since`, de mayor a menor pre-score (cola del juez)."""
+        rows = self.conn.execute(
+            """SELECT j.*, (SELECT url FROM job_sources s WHERE s.job_id = j.id
+                            ORDER BY seen_at LIMIT 1) AS url
+               FROM jobs j WHERE j.stage = ? AND j.last_seen >= ?
+               ORDER BY j.prescore DESC, j.first_seen DESC""",
+            (stage, _iso(since)),
+        ).fetchall()
+        return [self._stored(r) for r in rows]
+
+    def get_job(self, job_id: str) -> StoredJob | None:
+        row = self.conn.execute(
+            """SELECT j.*, (SELECT url FROM job_sources s WHERE s.job_id = j.id
+                            ORDER BY seen_at LIMIT 1) AS url
+               FROM jobs j WHERE j.id = ? OR j.id LIKE ? ORDER BY j.id = ? DESC LIMIT 1""",
+            (job_id, f"{job_id}%", job_id),
+        ).fetchone()
+        return self._stored(row) if row else None
+
+    def cached_verdict(self, cache_key: str) -> StoredVerdict | None:
+        row = self.conn.execute("SELECT * FROM verdicts WHERE cache_key = ?", (cache_key,)).fetchone()
+        if row is None:
+            return None
+        return StoredVerdict(
+            cache_key=row["cache_key"],
+            status=row["status"],
+            verdict_json=row["verdict_json"],
+            model=row["model"],
+            prompt_version=row["prompt_version"],
+            tokens_in=row["tokens_in"],
+            tokens_out=row["tokens_out"],
+            created_at=_dt(row["created_at"]),
+        )
+
+    def save_verdict(self, job_id: str, verdict: StoredVerdict) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO verdicts (cache_key, job_id, status, verdict_json, model, "
+            "prompt_version, tokens_in, tokens_out, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                verdict.cache_key,
+                job_id,
+                verdict.status,
+                verdict.verdict_json,
+                verdict.model,
+                verdict.prompt_version,
+                verdict.tokens_in,
+                verdict.tokens_out,
+                _iso(verdict.created_at),
+            ),
+        )
+
+    def set_judged(
+        self, job_id: str, stage: Stage, verdict_key: str | None, rank: float | None, error: str | None = None
+    ) -> None:
+        self.conn.execute(
+            "UPDATE jobs SET stage = ?, verdict_key = ?, rank_score = ?, judge_error = ? WHERE id = ?",
+            (stage, verdict_key, rank, error, job_id),
+        )
+
+    def reset_failed(self) -> int:
+        cur = self.conn.execute(
+            "UPDATE jobs SET stage = 'pending_judge', judge_error = NULL WHERE stage = 'judge_failed'"
+        )
+        return cur.rowcount
+
+    def tokens_used(self, day: date) -> int:
+        row = self.conn.execute(
+            "SELECT tokens_used FROM token_ledger WHERE day = ?", (day.isoformat(),)
+        ).fetchone()
+        return row["tokens_used"] if row else 0
+
+    def add_tokens(self, day: date, tokens: int) -> None:
+        self.conn.execute(
+            "INSERT INTO token_ledger (day, tokens_used, requests) VALUES (?, ?, 1) "
+            "ON CONFLICT(day) DO UPDATE SET tokens_used = tokens_used + excluded.tokens_used, "
+            "requests = requests + 1",
+            (day.isoformat(), tokens),
         )
 
     # --- Ejecuciones ---------------------------------------------------------------------

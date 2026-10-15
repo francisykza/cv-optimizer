@@ -50,6 +50,22 @@ def test_good_offer_passes(rules: GoldenRules) -> None:
             {"modality": "remote", "description": LONG_DESCRIPTION + " Candidates must be based in the US."},
             "LOC_REMOTE_SCOPE",
         ),
+        (  # redacción real que se escapaba (oferta de MeeBoss, 16/10/2026)
+            {
+                "modality": "remote",
+                "location": "USA",
+                "description": LONG_DESCRIPTION
+                + " Authorization to work in the US or Canada without sponsorship.",
+            },
+            "LOC_REMOTE_SCOPE",
+        ),
+        (
+            {
+                "modality": "remote",
+                "description": LONG_DESCRIPTION + " Valid work permit for the UK required.",
+            },
+            "LOC_REMOTE_SCOPE",
+        ),
         ({"language": "other"}, "LANG_NOT_ALLOWED"),
         (
             {"description": LONG_DESCRIPTION + " Requisitos: 4 años de experiencia con Python."},
