@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.6.0 |
+| **Versión** | 1.6.1 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -23,6 +23,7 @@
 | 1.4.0 | 2026-10-13 | Textarea inteligente de la oferta (§9.8): enlace vía `POST /api/v1/extract-job-url` (Jina Reader), capturas con OCR en el navegador (tesseract.js) y limpieza del texto copiado; prompt v4 (ignorar el ruido de la web); hasta 6 sugerencias ATS; ADR-009. |
 | 1.5.0 | 2026-10-15 | Rediseño visual "la mesa del corrector" (§9.5): paleta de papel, tinta y rotuladores, IBM Plex Sans/Serif y portada con demo animada en lugar del kit genérico de tarjetas. |
 | 1.6.0 | 2026-10-15 | Resumen reescribible (`UNGROUNDED_CLAIM` pasa a informativo), filtro de banners de cookies en frontend y backend, nivel de ajuste sutil/profundo, pitch de candidatura (`application_pitch`) validado, memoria local opcional del CV, experiencia del usuario en los requisitos que faltan e indicador del servidor tolerante; prompt v5; ADR-010. |
+| 1.6.1 | 2026-10-15 | Comparación de keywords sin tildes, secciones con encabezado de nivel 1 en el validador y aviso de rasgos de la oferta en el pitch (fallos vistos con el modelo de reserva `gpt-oss-20b`). |
 
 ---
 

@@ -10,8 +10,11 @@ const ENGLISH_HEADINGS = /^#{2,3}\s+(experience|education|skills|summary|profile
 const HEADING = /^(#{1,6})\s/
 const LIST_ITEM = /^(\s*[-*+])\s+/
 
+/** Sin tildes ni mayúsculas, igual que el backend (match_scorer.contains). */
+const fold = (text: string) => text.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
+
 export function containsSkill(markdown: string, skill: string): boolean {
-  return buildTermsRegExp([skill])?.test(markdown) ?? false
+  return buildTermsRegExp([fold(skill)])?.test(fold(markdown)) ?? false
 }
 
 /** Etiqueta corta de un requisito: "Inglés C1 (el CV indica B2)" -> "Inglés C1". */

@@ -103,13 +103,14 @@ Las pruebas con usuarios y servicios reales sacaron a la luz problemas que los t
 | "Servidor no disponible" en la primera visita del día | Mientras Render despierta el servicio responde sin cabeceras CORS, y el frontend lo trataba como una caída | Reintentos con estado "despertando" durante 2 minutos y botón bloqueado mientras tanto |
 | El resumen incluía "orientada a la mejora continua y al trabajo autónomo" | El LLM rellenaba el resumen con cualidades que el validador no comprobaba | Nuevo aviso de afirmaciones sin respaldo y regla explícita en el prompt v2 |
 | La compatibilidad **bajó** de 17 % a 11 % tras optimizar (prueba desde el móvil con una oferta de administración) | El LLM quitó del CV un término de la oferta que ya estaba. Además, la lista contaba palabras genéricas ("experiencia") y rasgos de personalidad que nunca se añadirán | Corrección automática que recupera las keywords perdidas, filtro de genéricas y rasgos personales mostrados aparte, sin puntuar. En producción el modelo no separaba los rasgos aunque el prompt lo pedía, así que se añadió un clasificador determinista (léxico de competencias personales) |
+| Con el modelo de reserva (`gpt-oss-20b`), la compatibilidad bajó de 75 % a 50 % y el validador marcó "Resumen profesional" como dato inventado | Al poner las tildes que faltaban en el PDF ("Administracion" → "Administración"), la comparación de keywords, sensible a tildes, lo contaba como término perdido. Además, este modelo usa `# Sección` (nivel 1) en vez de `## Sección`. También añadió "organizada y proactiva" al pitch | Comparación sin tildes ni mayúsculas en backend y frontend. Detección de secciones de nivel 1, sin perder la comprobación de empresas inventadas. Aviso informativo de rasgos de la oferta en el pitch |
 | Tirones al hacer scroll | Desenfoques de fondo (`backdrop-filter`) en 7 tarjetas y en la cabecera fija, y un `filter: blur()` sobre el halo de la portada | Fondos opacos y degradados. Medido: de 8 elementos con filtro a 0 |
 
 ## 6. Cómo se verificó cada cambio
 
 El criterio fue no dar nada por terminado sin una prueba que lo demostrara:
 
-- **Tests automáticos:** 194 en total (133 en el backend con pytest y 61 en el frontend con Vitest), ejecutados en cada push por la CI.
+- **Tests automáticos:** 199 en total (137 en el backend con pytest y 62 en el frontend con Vitest), ejecutados en cada push por la CI.
 - **Controles negativos:** los tests críticos se comprobaron haciéndolos fallar a propósito. Por ejemplo, el test que garantiza que el PDF nunca se escribe en disco falla si se quita la corrección.
 - **Flujo completo con un LLM simulado:** un servidor local que imita a Groq devolviendo CVs con datos inventados. Así se probó la corrección automática y el resaltado sin gastar cuota.
 - **Seguridad del navegador:** el build de producción se sirvió localmente con la misma Content-Security-Policy que Vercel, para confirmar que la app y las exportaciones no la violan.
@@ -142,15 +143,15 @@ El proyecto aplica a su propio dominio los principios que exige el uso de IA gen
 | Duración | 2 días (12 y 13 de octubre de 2026) |
 | Especificación | `SDD.md`: ~1.520 líneas, versión 1.6.0, 10 ADRs |
 | Código | ~4.700 líneas de código de aplicación y ~1.300 de tests, en Python y TypeScript |
-| Tests | 194 (133 en el backend y 61 en el frontend) |
-| Fallos de producción resueltos | 7, cada uno con su test de regresión |
+| Tests | 199 (137 en el backend y 62 en el frontend) |
+| Fallos de producción resueltos | 8, cada uno con su test de regresión |
 | Coste de infraestructura | 0 €: planes gratuitos de Groq, Render y Vercel |
 
 ## 9. Lecciones aprendidas
 
 1. **La especificación es la herramienta de control más eficaz sobre un agente.** Las fases que partían de un encargo bien acotado necesitaron menos iteraciones que las peticiones abiertas.
 2. **Revisar el plan antes del código ahorra más que revisar el código.** Los cambios de rumbo son baratos en el plan y caros en la implementación.
-3. **Los tests simulados no sustituyen a producción.** Seis de los siete fallos de §5 dependían de servicios o datos reales: el panel de Render, el catálogo de modelos de Groq, el arranque en frío y las respuestas reales del LLM ante CVs y ofertas de sectores distintos. Probar pronto con servicios reales es imprescindible.
+3. **Los tests simulados no sustituyen a producción.** Siete de los ocho fallos de §5 dependían de servicios o datos reales: el panel de Render, el catálogo de modelos de Groq, el arranque en frío y las respuestas reales del LLM (incluido el modelo de reserva, que formatea distinto) ante CVs y ofertas de sectores distintos. Probar pronto con servicios reales es imprescindible.
 4. **Un LLM puede cumplir la letra de una regla sin cumplir su intención.** Respetó "no inventar experiencia", pero añadió cualidades genéricas al resumen. Las reglas de negocio críticas necesitan una verificación determinista fuera del modelo, además de la instrucción en el prompt.
 5. **Una especificación también se revisa contra el código.** El SDD V2 pedía sustituir el contrato de la API; contrastarlo con lo ya construido en la fase de plan evitó perder funcionalidad y mantuvo la regla de no inventar.
 6. **La autoría y la transparencia no están reñidas.** El autor dirige, decide y responde del resultado; documentar con precisión el papel de la IA forma parte de ese trabajo.

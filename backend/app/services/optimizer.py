@@ -84,7 +84,7 @@ class OptimizerService:
 
         # Capa 4 del SDD: validación determinista + una corrección si hay datos no respaldados o
         # si la optimización ha quitado términos de la oferta que el candidato ya tenía.
-        report = self._validate(output, extracted.text, keywords)
+        report = self._validate(output, extracted.text, keywords, soft_skills)
         dropped = match_scorer.dropped_keywords(keywords, extracted.text, output.optimized_markdown)
         first_ungrounded, first_dropped = report.ungrounded_count, len(dropped)
         corrections = 0
@@ -97,7 +97,7 @@ class OptimizerService:
                 break
             new_output, new_responses = corrected
             responses += new_responses
-            new_report = self._validate(new_output, extracted.text, keywords)
+            new_report = self._validate(new_output, extracted.text, keywords, soft_skills)
             new_dropped = match_scorer.dropped_keywords(
                 keywords, extracted.text, new_output.optimized_markdown
             )
@@ -171,9 +171,13 @@ class OptimizerService:
             ),
         )
 
-    def _validate(self, output: LLMOptimizeOutput, source_cv: str, keywords: list[str]) -> ValidationReport:
+    def _validate(
+        self, output: LLMOptimizeOutput, source_cv: str, keywords: list[str], soft_skills: list[str]
+    ) -> ValidationReport:
         report = self._validator.validate(output.optimized_markdown, source_cv, keywords)
-        report.warnings += self._validator.validate_pitch(output.application_pitch, source_cv, keywords)
+        report.warnings += self._validator.validate_pitch(
+            output.application_pitch, source_cv, keywords, soft_skills
+        )
         return report
 
     async def _correct(

@@ -33,4 +33,9 @@ describe('injectSkill', () => {
     const md = '## Habilidades\n- excel avanzado'
     expect(injectSkill(md, 'Excel')).toBe(md)
   })
+
+  it('no distingue tildes al buscar duplicados', () => {
+    const md = '## Habilidades\n- Facturación'
+    expect(injectSkill(md, 'facturacion')).toBe(md)
+  })
 })

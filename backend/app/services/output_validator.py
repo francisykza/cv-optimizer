@@ -69,6 +69,12 @@ _NEUTRAL_CLAIM_WORDS = frozenset(
 # (las cualidades inventadas suelen tener 0; reformular hechos reales ancla al menos 1 de cada 4).
 _CLAIM_MIN_WORDS = 3
 _CLAIM_MIN_GROUNDED_RATIO = 0.2
+_SECTION_TITLE = re.compile(
+    r"resumen|perfil|summary|profile|about|sobre m|extracto|objetivo|presentaci|experien|trayectoria|"
+    r"employment|work history|empleo|formaci|educaci|education|estudios|academ|habilidad|skill|competenc|"
+    r"conocimiento|tecnolog|aptitud|herramienta|idioma|language|certific|proyect|project|logro|achievement",
+    re.I,
+)
 _SKILLS = re.compile(
     r"habilidad|skill|competenc|conocimiento|tecnolog|technical|aptitud|herramienta|idioma|language", re.I
 )
@@ -200,7 +206,13 @@ class OutputValidator:
         self._check_format(markdown, source_cv, add)
         return report
 
-    def validate_pitch(self, pitch: str, source_cv: str, job_keywords: list[str]) -> list[ValidationWarning]:
+    def validate_pitch(
+        self,
+        pitch: str,
+        source_cv: str,
+        job_keywords: list[str],
+        soft_skills: list[str] | tuple[str, ...] = (),
+    ) -> list[ValidationWarning]:
         """El pitch de candidatura se controla por datos duros: años, cifras, contacto y requisitos
         de la oferta que el candidato no acredita. No tiene secciones, así que no aplican las
         comprobaciones de entidades, habilidades ni resumen."""
@@ -224,6 +236,16 @@ class OutputValidator:
         self._check_numbers(lines, source, add)
         self._check_contact(lines, source, add)
         self._check_gap_leaks(pitch, job_keywords, source, lines, add)
+        # Rasgos que pide la oferta ("proactiva") y el CV no demuestra: informativo, como en el resumen.
+        pitch_index = SourceIndex(pitch)
+        for trait in soft_skills:
+            if pitch_index.contains_phrase(trait) and not source.contains_phrase(trait):
+                add(
+                    "UNGROUNDED_CLAIM",
+                    f"«{trait}» lo pide la oferta, pero tu CV no lo demuestra. Si lo mantienes, "
+                    "prepárate para dar un ejemplo.",
+                    trait,
+                )
         return warnings
 
     # --- Comprobaciones ---------------------------------------------------------------------
@@ -385,16 +407,30 @@ class OutputValidator:
 
     @staticmethod
     def _sections(lines: list[str]) -> list[_Section]:
+        """Divide el CV por secciones. Lo normal es "# Nombre" y "## Sección", pero algunos modelos
+        usan "# Experiencia": en ese caso las secciones son los H1 con título de sección y el resto
+        de encabezados baja un nivel, para que "## Empresa" siga contando como puesto (nivel 3)."""
+        headings = [_HEADING.match(line) for line in lines]
+        h1_sections = any(
+            h and len(h.group(1)) == 1 and _SECTION_TITLE.search(_clean_markdown(h.group(2)))
+            for h in headings
+        )
         sections = [_Section(title="")]
-        for line in lines:
+        for line, heading in zip(lines, headings, strict=True):
             if not line.strip():
                 continue
-            heading = _HEADING.match(line)
             if heading:
                 level, title = len(heading.group(1)), heading.group(2)
-                if level == 2:
+                is_section = (
+                    level == 1 and _SECTION_TITLE.search(_clean_markdown(title))
+                    if h1_sections
+                    else level == 2
+                )
+                if is_section:
                     sections.append(_Section(title=_clean_markdown(title)))
                     continue
+                if h1_sections and level > 1:
+                    level += 1
                 sections[-1].lines.append((level, title))
             else:
                 sections[-1].lines.append((0, line))

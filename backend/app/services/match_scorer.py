@@ -67,8 +67,14 @@ def split_soft_skills(keywords: list[str], soft_skills: list[str]) -> tuple[list
 
 
 def contains(text: str, keyword: str) -> bool:
-    pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
-    return re.search(pattern, text, flags=re.IGNORECASE) is not None
+    """¿Aparece `keyword` como palabra completa? Sin distinguir tildes ni mayúsculas: el LLM puede
+    poner las tildes que faltaban en el PDF ("Administracion" -> "Administración") y eso no es
+    quitar el término."""
+    folded = fold(keyword)
+    if not folded:
+        return False
+    pattern = rf"(?<!\w){re.escape(folded)}(?!\w)"
+    return re.search(pattern, fold(text)) is not None
 
 
 def _is_generic(keyword: str) -> bool:
