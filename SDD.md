@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.7.0 |
+| **Versión** | 1.8.0 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -26,6 +26,7 @@
 | 1.6.1 | 2026-10-15 | Comparación de keywords sin tildes, secciones con encabezado de nivel 1 en el validador y aviso de rasgos de la oferta en el pitch (fallos vistos con el modelo de reserva `gpt-oss-20b`). |
 | 1.6.2 | 2026-10-15 | Tablero de pinza para la demo, el CV y el pitch; papel siempre claro; rotuladores legibles en modo oscuro; títulos sin marca de reformulado; destino elegible (Habilidades o un puesto) para la experiencia que añade el usuario. |
 | 1.7.0 | 2026-10-15 | Movimiento con narrativa propia (§9.5): tablero que cae y pinza que se cierra, rotulador que corrige la demo, carga con rotuladores trabajando, CV que se imprime, puntuación que cuenta y chips que vuelan al CV. |
+| 1.8.0 | 2026-10-15 | Especificación del módulo Job Hunter (buscador inverso de empleo con IA) en [`hunter/SPEC.md`](hunter/SPEC.md); ADR-011. Sin cambios de código todavía. |
 
 ---
 
@@ -1489,6 +1490,23 @@ docker compose up --build
   - (+) Lo añadido por el usuario queda marcado como suyo.
   - (+) En un ordenador compartido no queda un CV guardado sin querer.
   - (−) El resumen puede contener cualidades que el CV no demuestra: se avisan, pero no se corrigen solas.
+
+### ADR-011: Job Hunter local, con estado y juez IA solo para ranking
+
+- **Contexto:**
+  - Se añade un buscador y filtrador inverso de empleo que alimenta al Optimizador (especificación completa en [`hunter/SPEC.md`](hunter/SPEC.md)).
+  - Necesita estado (ofertas vistas, reglas, veredictos), cosa que ADR-001 descarta para el Optimizador público.
+  - Necesita un LLM que juzgue ofertas, cosa que ADR-005 descarta para validar el CV.
+  - Scrapear desde Render o GitHub Actions (IPs de datacenter) multiplica los bloqueos, y `python-jobspy` arrastra pandas.
+- **Decisión:**
+  - Paquete `hunter/` aparte, monousuario y **local**: worker lanzado por el Programador de tareas de Windows, SQLite en `hunter/data/` y API en `127.0.0.1:8001` con token propio.
+  - El backend de Render sigue stateless y sin `jobspy`; `hunter` reutiliza `app` como paquete instalable (cambios solo aditivos).
+  - El juez IA (`gpt-oss-120b` con reserva `gpt-oss-20b`) solo **ordena** ofertas; sus red flags exigen cita literal verificada de forma determinista. La validación anti-alucinación del CV no cambia.
+  - El puente al Optimizador pasa por `sessionStorage` (`cvopt:handoff`), sin tocar `POST /api/v1/optimize`.
+- **Consecuencias:**
+  - (+) Coste 0 €, datos personales en el equipo del usuario, menos bloqueos de portales.
+  - (+) ADR-001 y ADR-005 siguen intactos para el producto público.
+  - (−) La búsqueda solo corre con el PC encendido y no es demostrable en la web pública sin arrancar la API local. Migrar a la nube solo exige cambiar el repositorio de persistencia.
 
 ---
 
