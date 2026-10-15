@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer · módulo **Job Hunter** (buscador y filtrador inverso de empleo con IA) |
 | **Tipo de documento** | Especificación técnica (SDD del módulo) |
-| **Versión** | 0.1.0 (borrador aprobado en Fase 0) |
+| **Versión** | 0.1.1 (Fase 1 implementada) |
 | **Fecha** | 2026-10-15 |
 | **Estado** | Aprobado para implementar la Fase 1 |
 | **Autor** | Francisco Muñoz Dorado |
@@ -15,6 +15,7 @@
 | Versión | Fecha | Cambio |
 |---|---|---|
 | 0.1.0 | 2026-10-15 | Versión inicial tras la auditoría de la Fase 0: worker local + SQLite, deduplicación en 3 capas, guillotina explicable, juez Groq con structured outputs y presupuesto de tokens, puente al Optimizador por `sessionStorage`. |
+| 0.1.1 | 2026-10-15 | Ajustes al implementar la Fase 1: jobspy ≥ 1.2 registra los fallos en vez de lanzarlos (se capturan sus logs para detectar bloqueos); la capa 3 de dedup no fusiona títulos con distinto nivel (junior/senior); `remote=false` explícito de Arbeitnow cuenta como presencial; idioma `unknown`; "entre X y Y años"; regla `LOC_FOREIGN_COUNTRY` (en el primer run real, LinkedIn devolvió ofertas de EE. UU. para "España" y pasaban por no indicar modalidad); CLI `rules`, `jobs` y `sources`. |
 
 ---
 
@@ -107,7 +108,7 @@ flowchart LR
 
 | Contenedor | Tecnología | Responsabilidad |
 |---|---|---|
-| `hunter` CLI | Python 3.12, `python -m hunter ...` | `init`, `run`, `serve`, `simulate`, `export`. Lo lanza el Programador de tareas. |
+| `hunter` CLI | Python 3.12, `python -m hunter ...` | `init`, `run`, `rules show\|export\|import`, `simulate`, `jobs`, `sources`, `purge` (y `serve` en la Fase 3). Lo lanza el Programador de tareas. |
 | Pipeline | `hunter.pipeline` | Orquesta las etapas; idempotente y reanudable. |
 | Fuentes | `hunter.sources` | Una clase por fuente detrás de la interfaz `JobSource`; aisladas entre sí. |
 | Juez | `hunter.judge` | Llamadas a Groq vía `app.services.llm.groq.GroqProvider`, limitador de tokens, caché de veredictos. |
@@ -145,8 +146,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
-Site = Literal["linkedin", "indeed", "google", "remotive", "arbeitnow", "himalayas", "rss"]
+Site = Literal["linkedin", "indeed", "google", "remotive", "arbeitnow", "rss"]
 Modality = Literal["remote", "hybrid", "onsite", "unknown"]
+Language = Literal["es", "en", "other", "unknown"]  # "unknown" nunca descarta
 Stage = Literal["discarded", "pending_judge", "judged", "judge_failed"]
 AppStatus = Literal["none", "saved", "sent_to_optimizer", "applied", "dismissed"]
 
@@ -400,7 +402,8 @@ eternas que siguen repostándose.
     "onsite_allowed_areas": ["malaga", "torremolinos", "benalmadena", "fuengirola", "marbella", "rincon de la victoria", "alhaurin de la torre", "campanillas", "velez-malaga"],
     "accept_remote": true,
     "remote_scopes": ["spain", "europe", "emea", "worldwide"],
-    "accept_hybrid_outside_area": false
+    "accept_hybrid_outside_area": false,
+    "home_countries": ["spain"]
   },
   "experience": { "max_years_required": 2, "unknown_years": "pass" },
   "seniority": { "exclude_title_terms": ["senior", "sr", "lead", "principal", "staff", "head of", "manager", "director", "architect", "arquitecto"] },
@@ -437,7 +440,8 @@ eternas que siguen repostándose.
 | 3 | `SEN_TITLE` | El título contiene un término de `seniority.exclude_title_terms`. | título |
 | 4 | `BL_TITLE_TERM` | El título contiene un término de `blacklists.title_terms`. | título |
 | 5 | `LOC_ONSITE_OUT_OF_AREA` | Modalidad `onsite` (o `hybrid` con `accept_hybrid_outside_area=false`) y `location_bucket` fuera de `onsite_allowed_areas`. | ubicación + modalidad |
-| 6 | `LOC_REMOTE_SCOPE` | Remoto restringido a un ámbito no aceptado ("US only", "remote within Germany"). | descripción |
+| 5b | `LOC_FOREIGN_COUNTRY` | La ubicación está en un país fuera de `location.home_countries` (por defecto `["spain"]`; "Knoxville, TN, USA") y la oferta **no** es remota. Sin modalidad no es "duda": una oficina en otro país no es para ti. | ubicación |
+| 6 | `LOC_REMOTE_SCOPE` | Remoto restringido a un ámbito no aceptado ("US only", "remote within Germany"), leyendo la ubicación y la descripción. | ubicación + descripción |
 | 7 | `LANG_NOT_ALLOWED` | Idioma detectado fuera de `languages.allowed`. | descripción |
 | 8 | `EXP_TOO_MANY_YEARS` | Años exigidos > `experience.max_years_required` (ver §6.4). | descripción |
 | 9 | `BL_INTERMEDIARY` | Señales de intermediaria/consultora en la descripción. | descripción |
@@ -474,7 +478,7 @@ class JobSource(ABC):
 
 | Fuente | Implementación | Notas |
 |---|---|---|
-| `linkedin`, `indeed`, `google` | `JobspySource(site)`: `scrape_jobs(site_name=[site], ...)` **una llamada por portal**, ejecutada en `asyncio.to_thread` con `asyncio.wait_for(timeout)`. | `linkedin_fetch_description=True` (sin descripción no hay guillotina útil). `country_indeed="spain"`. `results_wanted` bajo (≤ 30), `hours_old=48`. Import perezoso de `jobspy` (extra opcional `scrape`). Se mapean las columnas del DataFrame a `RawJob` fila a fila; las que no validan se cuentan en `invalid`. |
+| `linkedin`, `indeed`, `google` | `JobspySource(site)`: `scrape_jobs(site_name=[site], ...)` **una llamada por portal**, ejecutada en `asyncio.to_thread` con `asyncio.wait_for(timeout)`. | `fetch_description=True` (sin descripción no hay guillotina útil). Desde jobspy 1.2 los portales no lanzan excepciones: registran el fallo en su logger (`JobSpy:LinkedIn`...), así que se captura ese log para distinguir `blocked` (429/403/999, "blocked?") de `empty`. `country_indeed="spain"`. `results_wanted` bajo (≤ 30), `hours_old=48`. Import perezoso de `jobspy` (extra opcional `scrape`). Se mapean las columnas del DataFrame a `RawJob` fila a fila; las que no validan se cuentan en `invalid`. |
 | `remotive` | `GET https://remotive.com/api/remote-jobs?category=software-dev` | JSON público; respetar su política (atribución y pocas peticiones al día). |
 | `arbeitnow` | `GET https://www.arbeitnow.com/api/job-board-api` | JSON público paginado; filtra Europa. |
 | `rss` | `feedparser` sobre URLs configurables | Para portales con RSS propio. |
@@ -503,9 +507,12 @@ suelen indicar bloqueo silencioso).
    "Remote"/"Remoto"/"Teletrabajo" → `remote`; si no se reconoce, `unknown`.
 5. `modality`: `is_remote` de la fuente + regex bilingüe sobre título y descripción:
    remoto (`100% remoto`, `teletrabajo`, `remote-first`, `fully remote`), híbrido (`híbrido`, `hybrid`,
-   `x días en oficina`), presencial (`presencial`, `on-site`, `in office`). Si se contradicen, gana el
-   texto de la descripción y se registra en el log.
-6. `language`: reutilizar `detect_language()` de `app.services.output_validator`.
+   `x días en oficina`), presencial (`presencial`, `on-site`, `in office`). Título y ubicación mandan;
+   si la descripción menciona remoto y presencial a la vez, se toma como híbrido. `is_remote=False`
+   solo cuenta como presencial en fuentes donde es un dato explícito (Arbeitnow): en jobspy es el valor
+   por defecto.
+6. `language`: `detect_language()` de `app.services.output_validator` (es/en) más una heurística de
+   palabras frecuentes para marcar como `other` las ofertas en alemán/francés; si no se sabe, `unknown`.
 7. URL canónica: esquema+host en minúsculas, sin fragmento, sin parámetros de seguimiento (`utm_*`,
    `trk`, `trackingId`, `refId`, `from`, `src`, `gclid`, `fbclid`), y para LinkedIn/Indeed reducida a su
    identificador (`/jobs/view/{id}`, `viewjob?jk={id}`).
@@ -529,7 +536,9 @@ contador > 0. Implementación propia en Python puro (~40 líneas), sin dependenc
 2. Capa 2 coincide con una oferta vista en los últimos 60 días **y** Hamming(simhash) ≤ 12 → alias
    (`job_sources`) de la existente; fin. (Si la distancia es mayor, es un puesto distinto con el mismo
    título en la misma empresa: oferta nueva.)
-3. Capa 3: Hamming ≤ 3 con cualquier oferta de los últimos 60 días → alias; fin.
+3. Capa 3: Hamming ≤ 3 con cualquier oferta de los últimos 60 días → alias; fin. **Excepción:** si los
+   dos títulos declaran niveles distintos (becario/junior/senior), no se fusionan: hay empresas que
+   reutilizan la descripción, y si llegara antes la senior (descartada) la junior se perdería.
 4. Si no, oferta nueva → guillotina.
 
 Con unos cientos de ofertas, el escaneo lineal de la capa 3 cuesta milisegundos. Si se superan ~20 000,
@@ -548,7 +557,9 @@ Sobre la descripción **original** (con tildes para leer, `fold()` para comparar
 - **Inglés:** `(\d{1,2})\s*\+?\s*(?:(?:-|to)\s*(\d{1,2}))?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:[\w#+.-]+\s+){0,3}experience`,
   `(?:at least|minimum(?: of)?)\s+(\d{1,2})\s*(?:years?|yrs?)`.
 - **Números en letra:** uno…diez / one…ten → dígitos antes de aplicar los patrones.
-- **Rangos:** "3-5 años" cuenta como 3 (el mínimo exigido).
+- **Rangos:** "3-5 años" y "entre 3 y 5 años" cuentan como 3 (el mínimo exigido).
+- **Números de 4 cifras** ("fundada en 2023") nunca se leen como años de experiencia; por encima de 15
+  años se asume que habla de la empresa.
 - **Varios valores:** se toma el **máximo** de los mínimos de frases obligatorias.
 - **Frases opcionales ignoradas:** si la frase contiene `valorable`, `se valorará`, `deseable`, `plus`,
   `nice to have`, `preferred`, `bonus`, no cuenta.
@@ -1021,7 +1032,7 @@ Job `hunter`: Python 3.12 → `pip install -e backend` → `pip install -e "hunt
 **Entregables:** paquete `hunter/` instalable, cambios de packaging en `backend/pyproject.toml`,
 `models.py`, `store/` con migración 001, fuentes `linkedin`/`indeed`/`google` (jobspy) + `remotive` +
 `arbeitnow` con aislamiento y circuit breaker, normalización, dedup en 3 capas, detección de años,
-guillotina con explicación y simulación, pre-score, CLI `init`/`run --mode ingest_only`/`simulate`/`purge`,
+guillotina con explicación y simulación, pre-score, CLI `init`/`run --mode ingest_only`/`rules`/`simulate`/`jobs`/`sources`/`purge`,
 tests §15.1 salvo juez/API, job de CI.
 **Hecho cuando:** un `python -m hunter run --mode ingest_only` real con las reglas de ejemplo guarda
 ofertas, el segundo run seguido no crea ninguna nueva, el informe muestra el estado de cada fuente y una

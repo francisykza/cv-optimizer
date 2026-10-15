@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "search": {
+    "queries": [
+      {
+        "term": "junior AI engineer",
+        "google_term": "junior AI engineer jobs in Málaga since yesterday",
+        "location": "Málaga, España",
+        "sites": [
+          "linkedin",
+          "indeed",
+          "google"
+        ],
+        "hours_old": 48,
+        "results_wanted": 25,
+        "is_remote": null
+      },
+      {
+        "term": "python",
+        "location": "Málaga, España",
+        "sites": [
+          "indeed"
+        ],
+        "hours_old": 72,
+        "results_wanted": 30,
+        "is_remote": null
+      },
+      {
+        "term": "python developer junior",
+        "location": "Spain",
+        "sites": [
+          "linkedin",
+          "indeed"
+        ],
+        "hours_old": 48,
+        "results_wanted": 25,
+        "is_remote": true
+      }
+    ],
+    "country_indeed": "spain",
+    "feeds": [
+      "remotive",
+      "arbeitnow"
+    ],
+    "rss": []
+  },
+  "location": {
+    "home_area": "malaga",
+    "onsite_allowed_areas": [
+      "malaga",
+      "torremolinos",
+      "benalmadena",
+      "fuengirola",
+      "mijas",
+      "marbella",
+      "rincon de la victoria",
+      "alhaurin de la torre",
+      "cartama",
+      "campanillas",
+      "velez-malaga",
+      "antequera"
+    ],
+    "accept_remote": true,
+    "remote_scopes": [
+      "spain",
+      "europe",
+      "emea",
+      "worldwide"
+    ],
+    "accept_hybrid_outside_area": false,
+    "home_countries": [
+      "spain"
+    ]
+  },
+  "experience": {
+    "max_years_required": 2,
+    "unknown_years": "pass"
+  },
+  "seniority": {
+    "exclude_title_terms": [
+      "senior",
+      "sr",
+      "lead",
+      "principal",
+      "staff",
+      "head of",
+      "manager",
+      "director",
+      "architect",
+      "arquitecto",
+      "jefe"
+    ]
+  },
+  "blacklists": {
+    "companies": [],
+    "intermediary_signals": [
+      "para importante cliente",
+      "para un importante cliente",
+      "para una importante empresa",
+      "nuestro cliente",
+      "on behalf of our client",
+      "our client is",
+      "body shopping"
+    ],
+    "title_terms": [
+      "comercial",
+      "sales",
+      "ventas",
+      "teleoperador",
+      "prácticas no remuneradas",
+      "account executive",
+      "business development",
+      "sdr",
+      "customer success"
+    ],
+    "description_terms": [
+      "autónomo obligatorio",
+      "solo freelance",
+      "unpaid"
+    ]
+  },
+  "required_any": {
+    "terms": [
+      "python",
+      "llm",
+      "inteligencia artificial",
+      "artificial intelligence",
+      "machine learning",
+      "ia generativa",
+      "generative ai",
+      "fastapi",
+      "rag",
+      "nlp",
+      "ai engineer",
+      "data science",
+      "langchain",
+      "openai"
+    ],
+    "min_hits": 1
+  },
+  "languages": {
+    "allowed": [
+      "es",
+      "en"
+    ]
+  },
+  "salary": {
+    "min_annual_eur": null
+  },
+  "freshness": {
+    "max_age_days": 21
+  },
+  "judge": {
+    "profile_file": "data/profile.md",
+    "priorities": [
+      "aprender IA aplicada en producción",
+      "mentoría",
+      "remoto o Málaga"
+    ],
+    "soft_dislikes": [
+      "guardias",
+      "más de 1 día presencial fuera de Málaga"
+    ],
+    "min_score_to_show": 55
+  }
+}

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Empleo tech de ejemplo</title>
+    <item>
+      <title>Desarrollador Python Junior en Ejemplo Tech</title>
+      <link>https://empleo.example.com/ofertas/42?utm_source=rss</link>
+      <guid>oferta-42</guid>
+      <pubDate>Wed, 14 Oct 2026 08:00:00 +0200</pubDate>
+      <description>&lt;p&gt;Equipo de IA en Málaga. Python, FastAPI y LLM.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Data Analyst</title>
+      <link>https://empleo.example.com/ofertas/43</link>
+      <guid>oferta-43</guid>
+      <description>SQL y Python.</description>
+    </item>
+  </channel>
+</rss>

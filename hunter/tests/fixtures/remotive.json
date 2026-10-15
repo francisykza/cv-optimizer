@@ -1,0 +1,34 @@
+{
+  "job-count": 3,
+  "jobs": [
+    {
+      "id": 1901001,
+      "url": "https://remotive.com/remote-jobs/software-dev/junior-ai-engineer-1901001",
+      "title": "Junior AI Engineer",
+      "company_name": "Example Remote Co",
+      "category": "Software Development",
+      "job_type": "full_time",
+      "publication_date": "2026-10-14T09:00:00",
+      "candidate_required_location": "Europe",
+      "salary": "",
+      "description": "<p>We are looking for a <strong>junior</strong> engineer to build LLM features with Python.</p>"
+    },
+    {
+      "id": 1901002,
+      "url": "https://remotive.com/remote-jobs/software-dev/backend-1901002",
+      "title": "Backend Engineer",
+      "company_name": "US Startup",
+      "publication_date": "2026-10-13T09:00:00",
+      "candidate_required_location": "USA Only",
+      "description": "<p>Python backend role.</p>"
+    },
+    {
+      "id": 1901003,
+      "url": "not-a-url",
+      "title": "Broken row",
+      "company_name": "Nobody",
+      "candidate_required_location": "Worldwide",
+      "description": ""
+    }
+  ]
+}

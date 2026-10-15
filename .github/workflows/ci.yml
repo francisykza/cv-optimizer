@@ -32,6 +32,26 @@ jobs:
       - name: Tests
         run: pytest -q
 
+  hunter:
+    name: Job Hunter (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hunter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+          cache-dependency-path: hunter/pyproject.toml
+      # Sin el extra "scrape": los tests usan fuentes falsas y nunca importan jobspy.
+      - run: pip install -e ../backend -e ".[dev]"
+      - name: Lint
+        run: ruff check hunter tests
+      - name: Tests
+        run: pytest -q
+
   frontend:
     name: Frontend (React)
     runs-on: ubuntu-latest
