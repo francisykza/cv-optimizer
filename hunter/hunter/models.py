@@ -97,6 +97,8 @@ class RunCounts(BaseModel):
     judged: int = 0
     judge_failed: int = 0
     cache_hits: int = 0
+    # Ofertas en la cola del juez al empezar a juzgar: con judged + judge_failed da el progreso.
+    judge_queue: int = 0
 
 
 RunStatus = Literal["running", "ok", "partial", "failed"]
@@ -117,3 +119,77 @@ class Run(BaseModel):
     budget_exhausted: bool = False
     sources: list[SourceRun] = Field(default_factory=list)
     error: str | None = None
+
+
+# --- Candidaturas (Fase 4, SPEC §18.4) ---------------------------------------------------------
+
+ApplicationStatus = Literal[
+    "applied", "in_process", "interview", "offer", "rejected", "no_response", "withdrawn"
+]
+ApplicationSource = Literal["optimizer", "hunter", "manual"]
+
+
+def optional_http_url(value: str | None) -> str | None:
+    """Vacía o None: sin URL. Si la hay, tiene que ser http(s), porque se muestra como enlace."""
+    if not value:
+        return None
+    if not value.lower().startswith(("http://", "https://")):
+        raise ValueError("La URL debe empezar por http:// o https://")
+    return value
+
+
+class ApplicationIn(BaseModel):
+    """Alta de una candidatura. El id lo genera el cliente: si el navegador la reenvía desde su cola
+    (la API estaba apagada), no se duplica."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
+    job_id: str | None = Field(default=None, max_length=64)
+    company: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=300)
+    url: str | None = Field(default=None, max_length=2048)
+    location: str = Field(default="", max_length=300)
+    source: ApplicationSource = "manual"
+    applied_at: datetime | None = None  # por defecto, ahora
+    ats_score_before: int | None = Field(default=None, ge=0, le=100)
+    ats_score_after: int | None = Field(default=None, ge=0, le=100)
+    judge_score: int | None = Field(default=None, ge=0, le=100)
+    notes: str = Field(default="", max_length=4000)
+    offer_text: str | None = Field(default=None, max_length=20_000)
+    cv_markdown: str | None = Field(default=None, max_length=40_000)
+
+    @field_validator("url")
+    @classmethod
+    def _http_url(cls, value: str | None) -> str | None:
+        return optional_http_url(value)
+
+
+class ApplicationEvent(BaseModel):
+    status: ApplicationStatus
+    at: datetime
+
+
+class ApplicationRecord(BaseModel):
+    """Candidatura guardada. En los listados, `offer_text` y `cv_markdown` no se cargan (son largos):
+    `has_offer_text` y `has_cv` dicen si existen."""
+
+    id: str
+    job_id: str | None
+    company: str
+    title: str
+    url: str | None
+    location: str
+    source: ApplicationSource
+    status: ApplicationStatus
+    applied_at: datetime
+    status_changed_at: datetime
+    ats_score_before: int | None
+    ats_score_after: int | None
+    judge_score: int | None
+    notes: str
+    has_offer_text: bool = False
+    has_cv: bool = False
+    offer_text: str | None = None
+    cv_markdown: str | None = None
+    events: list[ApplicationEvent] = Field(default_factory=list)

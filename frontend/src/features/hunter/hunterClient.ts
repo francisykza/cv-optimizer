@@ -1,4 +1,11 @@
 import type {
+  ApplicationDetail,
+  ApplicationEvent,
+  ApplicationInput,
+  ApplicationItem,
+  ApplicationsPage,
+  ApplicationStatus,
+  ApplicationUpdate,
   AppStatus,
   GoldenRules,
   Handoff,
@@ -129,6 +136,10 @@ export function normalizeJob(job: JobItem): JobItem {
   return { ...job, sources: list(job.sources), verdict: normalizeVerdict(job.verdict) }
 }
 
+export function normalizeApplication<T extends ApplicationItem>(item: T): T {
+  return { ...item, notes: item.notes ?? '', events: list<ApplicationEvent>(item.events) }
+}
+
 // --- Endpoints -----------------------------------------------------------------------------------
 
 export const hunterApi = {
@@ -187,4 +198,52 @@ export const hunterApi = {
 
   saveRules: (token: string, rules: GoldenRules) =>
     request<RulesSaved>('/api/v1/rules', { method: 'PUT', token, body: { rules } }),
+
+  /** Canjea el código de un solo uso del lanzador por el token (SPEC §18.2). */
+  pair: (code: string) => request<{ token: string }>('/api/v1/pair', { method: 'POST', body: { code } }),
+
+  shutdown: (token: string) => request<{ status: 'stopping' }>('/api/v1/shutdown', { method: 'POST', token }),
+
+  applications: async (token: string, params: { status?: ApplicationStatus; q?: string } = {}) => {
+    const query = new URLSearchParams()
+    if (params.status) query.set('status', params.status)
+    if (params.q) query.set('q', params.q)
+    const page = await request<ApplicationsPage>(`/api/v1/applications?${query}`, { token })
+    return { ...page, items: list<ApplicationItem>(page.items).map(normalizeApplication) }
+  },
+
+  application: async (token: string, id: string) =>
+    normalizeApplication(await request<ApplicationDetail>(`/api/v1/applications/${encodeURIComponent(id)}`, { token })),
+
+  createApplication: async (token: string, input: ApplicationInput) =>
+    normalizeApplication(
+      await request<ApplicationDetail>('/api/v1/applications', { method: 'POST', token, body: input }),
+    ),
+
+  updateApplication: async (token: string, id: string, changes: ApplicationUpdate) =>
+    normalizeApplication(
+      await request<ApplicationItem>(`/api/v1/applications/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        token,
+        body: changes,
+      }),
+    ),
+
+  deleteApplication: (token: string, id: string) =>
+    request<null>(`/api/v1/applications/${encodeURIComponent(id)}`, { method: 'DELETE', token }),
+
+  /** CSV para Excel (separador `;`, BOM). Sin JSON: se descarga tal cual. */
+  exportApplications: async (token: string): Promise<Blob> => {
+    let response: Response
+    try {
+      response = await fetch(`${HUNTER_URL}/api/v1/applications.csv`, {
+        headers: { 'X-Hunter-Token': token },
+        signal: AbortSignal.timeout(15_000),
+      })
+    } catch {
+      throw new HunterError('OFFLINE', 'La API local no responde.', 0)
+    }
+    if (!response.ok) throw new HunterError('HTTP_ERROR', 'No se pudo exportar.', response.status)
+    return response.blob()
+  },
 }

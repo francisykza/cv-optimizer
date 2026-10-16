@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { consumeHandoff } from '../../lib/handoff'
+import { outbox } from './applications'
 import { HunterError, hunterApi, normalizeJob, tokenStore } from './hunterClient'
 import HunterView from './HunterView'
-import type { JobItem } from './types'
+import type { ApplicationItem, ApplicationsPage, JobItem, Run } from './types'
 
 const LONG = 'Junior AI Engineer — Acme (Málaga, híbrido)\n\n' + 'Python, LLM y RAG con mentoría semanal. '.repeat(8)
 
@@ -61,14 +62,78 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
   window.location.hash = ''
+  localStorage.clear()
+  sessionStorage.clear()
+})
+
+function application(overrides: Partial<ApplicationItem> = {}): ApplicationItem {
+  return {
+    id: 'app-1',
+    job_id: 'job-1',
+    company: 'Acme Labs',
+    title: 'Junior AI Engineer',
+    url: 'https://www.linkedin.com/jobs/view/1',
+    location: 'Málaga',
+    source: 'optimizer',
+    status: 'applied',
+    applied_at: '2026-10-12T10:00:00+00:00',
+    status_changed_at: '2026-10-12T10:00:00+00:00',
+    ats_score_before: 54,
+    ats_score_after: 86,
+    judge_score: 82,
+    notes: '',
+    has_offer_text: true,
+    has_cv: true,
+    events: [{ status: 'applied', at: '2026-10-12T10:00:00+00:00' }],
+    stale: false,
+    ...overrides,
+  }
+}
+
+const applicationsPage = (items: ApplicationItem[]): ApplicationsPage => ({
+  items,
+  total: items.length,
+  stats: {
+    total: items.length,
+    last_7_days: items.length,
+    awaiting: items.length,
+    responded: 0,
+    interviews: 0,
+    offers: 0,
+    stale: 0,
+    avg_ats_after: 86,
+    by_band: [],
+  },
 })
 
 describe('HunterView', () => {
-  it('explica cómo arrancar la API si no responde', async () => {
+  it('si la API está apagada, manda al acceso directo del escritorio', async () => {
     vi.mocked(hunterApi.health).mockRejectedValue(new HunterError('OFFLINE', 'no', 0))
     render(<HunterView />)
-    expect(await screen.findByRole('heading', { name: 'La API local no está arrancada' })).toBeInTheDocument()
-    expect(screen.getByText(/python -m hunter serve/)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'La API local está apagada' })).toBeInTheDocument()
+    expect(screen.getByText('Buscador de empleo')).toBeInTheDocument()
+    expect(screen.getByText(/python -m hunter open/)).toBeInTheDocument()
+  })
+
+  it('se conecta sola con el código del acceso directo y lo quita de la dirección', async () => {
+    window.location.hash = '#/buscar?pair=codigo-de-un-solo-uso'
+    vi.spyOn(hunterApi, 'pair').mockResolvedValue({ token: 'token-emparejado' })
+    render(<HunterView />)
+    expect(await screen.findByRole('article', { name: 'Junior AI Engineer' })).toBeInTheDocument()
+    expect(hunterApi.pair).toHaveBeenCalledWith('codigo-de-un-solo-uso')
+    expect(hunterApi.jobs).toHaveBeenCalledWith('token-emparejado', expect.objectContaining({ view: 'ranked' }))
+    expect(tokenStore.get()).toBe('token-emparejado')
+    expect(window.location.hash).toBe('#/buscar')
+  })
+
+  it('un código caducado explica qué hacer', async () => {
+    window.location.hash = '#/buscar?pair=viejo'
+    vi.spyOn(hunterApi, 'pair').mockRejectedValue(
+      new HunterError('PAIR_CODE_INVALID', 'El enlace de conexión ha caducado o ya se usó.', 401),
+    )
+    render(<HunterView />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('El enlace de conexión ha caducado')
+    expect(screen.getByLabelText('Token local')).toBeInTheDocument()
   })
 
   it('pide el token y, con él, muestra el ranking', async () => {
@@ -124,7 +189,131 @@ describe('HunterView', () => {
     render(<HunterView />)
     await user.click(await screen.findByRole('button', { name: 'Enviar al Optimizador' }))
     await waitFor(() => expect(window.location.hash).toBe('#/optimizar'))
-    expect(consumeHandoff()).toMatchObject({ company: 'Acme Labs', text: LONG, language: 'es' })
+    expect(consumeHandoff()).toMatchObject({
+      company: 'Acme Labs',
+      text: LONG,
+      language: 'es',
+      sourceUrl: 'https://www.linkedin.com/jobs/view/1',
+      jobId: 'job-1',
+      matchScore: 86,
+      location: 'Málaga',
+    })
+  })
+
+  it('"Ya me he inscrito" la apunta en Candidaturas con la nota del juez', async () => {
+    tokenStore.set('t', false)
+    vi.spyOn(hunterApi, 'createApplication').mockResolvedValue({
+      ...application({ source: 'hunter' }),
+      offer_text: null,
+      cv_markdown: null,
+    })
+    const user = userEvent.setup()
+    render(<HunterView />)
+    await user.click(await screen.findByRole('button', { name: 'Ya me he inscrito' }))
+    expect(await screen.findByText('Inscrito: está en tus candidaturas')).toBeInTheDocument()
+    expect(hunterApi.createApplication).toHaveBeenCalledWith(
+      't',
+      expect.objectContaining({
+        job_id: 'job-1',
+        source: 'hunter',
+        company: 'Acme Labs',
+        title: 'Junior AI Engineer',
+        url: 'https://www.linkedin.com/jobs/view/1',
+        judge_score: 86,
+      }),
+    )
+  })
+
+  it('si la API no responde, la candidatura espera en el navegador', async () => {
+    tokenStore.set('t', false)
+    vi.spyOn(hunterApi, 'createApplication').mockRejectedValue(new HunterError('OFFLINE', 'no', 0))
+    const user = userEvent.setup()
+    render(<HunterView />)
+    await user.click(await screen.findByRole('button', { name: 'Ya me he inscrito' }))
+    await waitFor(() => expect(outbox.list()).toHaveLength(1))
+    expect(outbox.list()[0]).toMatchObject({ job_id: 'job-1', company: 'Acme Labs' })
+  })
+
+  it('la pestaña Candidaturas enseña la compatibilidad y cambia el estado', async () => {
+    tokenStore.set('t', false)
+    const interview = application({
+      status: 'interview',
+      events: [
+        { status: 'applied', at: '2026-10-12T10:00:00+00:00' },
+        { status: 'interview', at: '2026-10-15T10:00:00+00:00' },
+      ],
+    })
+    vi.spyOn(hunterApi, 'applications')
+      .mockResolvedValueOnce(applicationsPage([application()]))
+      .mockResolvedValue(applicationsPage([interview])) // tras el cambio se recarga el resumen
+    vi.spyOn(hunterApi, 'updateApplication').mockResolvedValue(interview)
+    const user = userEvent.setup()
+    render(<HunterView />)
+    await user.click(await screen.findByRole('tab', { name: 'Candidaturas' }))
+    const card = await screen.findByRole('article', { name: 'Junior AI Engineer' })
+    expect(within(card).getByText('86 %')).toHaveClass('marker-green')
+    expect(within(card).getByText('antes 54 %')).toBeInTheDocument()
+    expect(within(card).getByRole('link', { name: /Abrir la oferta/ })).toHaveAttribute(
+      'href',
+      'https://www.linkedin.com/jobs/view/1',
+    )
+    await user.selectOptions(within(card).getByLabelText('Estado de la candidatura'), 'interview')
+    expect(hunterApi.updateApplication).toHaveBeenCalledWith('t', 'app-1', { status: 'interview' })
+    expect(await within(card).findByText(/Entrevista 15 oct/)).toBeInTheDocument()
+  })
+
+  it('#/buscar/candidaturas abre directamente las candidaturas', async () => {
+    tokenStore.set('t', false)
+    window.location.hash = '#/buscar/candidaturas'
+    vi.spyOn(hunterApi, 'applications').mockResolvedValue(applicationsPage([]))
+    render(<HunterView />)
+    expect(await screen.findByText(/Aún no has apuntado ninguna candidatura/)).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Candidaturas' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('enseña cuántas ofertas lleva puntuadas la IA en una búsqueda', async () => {
+    tokenStore.set('t', false)
+    const running: Run = {
+      id: 'run-1',
+      trigger: 'api',
+      mode: 'full',
+      status: 'running',
+      started_at: '2026-10-16T08:00:00+00:00',
+      finished_at: null,
+      rules_version: 'x',
+      counts: {
+        fetched: 40,
+        new: 6,
+        duplicates: 30,
+        discarded: 2,
+        pending_judge: 4,
+        judged: 1,
+        judge_failed: 0,
+        cache_hits: 0,
+        judge_queue: 4,
+      },
+      tokens_used: 3000,
+      budget_exhausted: false,
+      sources: [],
+      error: null,
+    }
+    vi.mocked(hunterApi.runs).mockResolvedValue([running])
+    vi.spyOn(hunterApi, 'run').mockResolvedValue(running)
+    render(<HunterView />)
+    expect(await screen.findByText('La IA está puntuando las ofertas nuevas: 1 de 4.')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Ofertas puntuadas' })).toHaveAttribute('aria-valuenow', '1')
+  })
+
+  it('"Apagar ahora" apaga la API local', async () => {
+    tokenStore.set('t', false)
+    vi.mocked(hunterApi.health).mockResolvedValue({ ...health, auto_shutdown_minutes: 30 })
+    vi.spyOn(hunterApi, 'shutdown').mockResolvedValue({ status: 'stopping' })
+    const user = userEvent.setup()
+    render(<HunterView />)
+    expect(await screen.findByText(/se apaga sola 30 minutos después/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Apagar ahora' }))
+    expect(await screen.findByRole('heading', { name: 'La API local está apagada' })).toBeInTheDocument()
+    expect(hunterApi.shutdown).toHaveBeenCalledWith('t')
   })
 
   it('no envía un extracto: avisa y se queda', async () => {

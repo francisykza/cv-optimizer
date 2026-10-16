@@ -45,5 +45,5 @@ for ($i = 0; $i -lt 2; $i++) {
     Write-Host ("Programada: {0} a las {1}" -f $nombres[$i], $horas[$i])
 }
 Write-Host ""
-Write-Host "Listo. Cada ejecución queda en hunter\data\logs\hunter.log y en 'python -m hunter jobs'."
+Write-Host "Listo. Cada ejecución queda en %LOCALAPPDATA%\CV-Optimizer\hunter\logs\hunter.log y en 'python -m hunter jobs'."
 Write-Host "Para quitarlas: powershell -ExecutionPolicy Bypass -File hunter\scripts\install_task.ps1 -Quitar"

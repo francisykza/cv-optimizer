@@ -6,8 +6,8 @@ las que quedan: encaje 0-100, señales a favor y en contra con su cita literal, 
 inflado.
 Funciona en tu equipo, con SQLite, sin servicios de pago. Diseño completo en [SPEC.md](SPEC.md).
 
-**Estado:** completo (SPEC 0.3.0): motor determinista, juez IA, API local y vista "Buscador" en el
-frontend con el botón "Enviar al Optimizador".
+**Estado:** completo (SPEC 0.4.0): motor determinista, juez IA, API local, vista "Buscador" con el botón
+"Enviar al Optimizador", acceso directo de un doble clic y seguimiento de candidaturas.
 
 ## Instalación
 
@@ -19,9 +19,11 @@ python -m venv .venv
 .venv/Scripts/python -m hunter init
 ```
 
-`init` crea `data/` (base de datos, perfil y logs, fuera del repositorio), un `.env` con el token local
-y activa las reglas de [`rules.example.json`](rules.example.json). Edita `data/profile.md` con tus
-habilidades reales: el pre-score las usa para ordenar las ofertas.
+`init` crea la carpeta de datos (base de datos, perfil, logs y candidaturas), un `.env` con el token local
+y activa las reglas de [`rules.example.json`](rules.example.json). En Windows la carpeta de datos es
+`%LOCALAPPDATA%\CV-Optimizer\hunter`: fuera del repositorio y de OneDrive (en otros sistemas,
+`hunter/data/`; se cambia con `HUNTER_DATA_DIR`). Edita su `profile.md` con tus habilidades reales: el
+pre-score las usa para ordenar las ofertas y el juez lo lee entero.
 
 Para el juez, pon tu clave de Groq en `hunter/.env` (`GROQ_API_KEY=...`, plantilla en
 [`.env.example`](.env.example)). Sin clave, todo funciona hasta la guillotina.
@@ -48,7 +50,7 @@ tras 3 fallos seguidos se pausa unas horas (el doble en cada reapertura, máximo
 ### El juez y los tokens
 
 - La misma oferta nunca se paga dos veces: el veredicto se guarda por texto de la oferta + perfil +
-  versión del prompt. Cambiar `data/profile.md` o las prioridades sí invalida la caché.
+  versión del prompt. Cambiar `profile.md` o las prioridades sí invalida la caché.
 - Antes de cada llamada se estima su coste y se espera si no cabe en el límite por minuto (que se
   ajusta con las cabeceras de Groq). Si se agota la cuota diaria o `HUNTER_DAILY_TOKEN_BUDGET`, el
   juez para limpio y lo pendiente se retoma en el siguiente run.
@@ -56,26 +58,55 @@ tras 3 fallos seguidos se pausa unas horas (el doble en cada reapertura, máximo
   "sin cita verificable". Si el modelo no devuelve JSON válido ni tras una reparación, la oferta queda
   en `judge_failed` (`run --retry-failed` la devuelve a la cola).
 
+## Abrirlo con un doble clic
+
+Crea una vez el acceso directo **Buscador de empleo** en el escritorio:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\crear_acceso_directo.ps1
+```
+
+Cada doble clic (`python -m hunter open`, sin ventana de consola):
+
+1. Arranca la API local si no está encendida.
+2. Si la última búsqueda tiene más de 12 horas (`HUNTER_AUTORUN_HOURS`), lanza otra. Mientras, ves las
+   ofertas que ya tenías; la vista enseña "La IA está puntuando 5 de 14" y avisa de las nuevas sin mover
+   la lista.
+3. Abre la web publicada (`HUNTER_WEB_URL`) en el Buscador, **ya conectada**: lleva un código de un solo
+   uso que caduca a los 2 minutos, así que no hace falta copiar el token.
+
+La API se apaga sola 30 minutos después de cerrar el Buscador (`HUNTER_IDLE_MINUTES`); también tienes el
+botón "Apagar ahora". Para quitar el acceso directo, el mismo script con `-Quitar`.
+
 ## La vista Buscador
 
-1. Arranca la API local (déjala abierta en una terminal):
+Pestañas: ranking ("Para ti"), **Candidaturas**, pendientes del juez, descartadas con su motivo y Reglas de
+Oro con "Ver qué cambiaría" antes de guardar.
 
-   ```bash
-   .venv/Scripts/python -m hunter serve
-   ```
+"Enviar al Optimizador" lleva la oferta completa al paso 2 del Optimizador, con su enlace ("Abrir la
+oferta original"). Si solo tenemos un extracto, intenta leer la oferta entera; si no puede, te avisa para
+que la pegues tú.
 
-   Escucha solo en `http://127.0.0.1:8001` y exige el `HUNTER_TOKEN` de tu `.env`.
+Sin el acceso directo: `.venv/Scripts/python -m hunter serve` (escucha solo en `http://127.0.0.1:8001`,
+Ctrl+C para pararla) y entra en la web con `?hunter=1`; ahí puedes pegar el `HUNTER_TOKEN` de tu `.env`.
+En local, `frontend/.env.local` con `VITE_HUNTER_ENABLED=true` y `npm run dev`.
 
-2. Abre el frontend con la pestaña Buscador activada:
-   - En local: crea `frontend/.env.local` con `VITE_HUNTER_ENABLED=true` y ejecuta `npm run dev`.
-   - En la web publicada: entra una vez con `?hunter=1` (se recuerda en ese navegador). Añade su
-     dirección a `HUNTER_ALLOWED_ORIGINS` en `.env`; Chrome pedirá permiso para acceder a la red local.
+## Candidaturas
 
-3. La primera vez pega el valor de `HUNTER_TOKEN`. Desde ahí: ranking ("Para ti"), pendientes del juez,
-   descartadas con su motivo y Reglas de Oro con "Ver qué cambiaría" antes de guardar.
+Al terminar de optimizar, **Siguiente paso** te lleva a la oferta ("Abrir la oferta en linkedin.com") y
+apunta la candidatura con **"Me he inscrito con este CV"**. Se guarda la compatibilidad del CV que envías
+(con lo que hayas añadido), la de antes, la nota del Buscador, una copia de la oferta (los portales la borran
+al cerrarla) y el CV exacto que enviaste. "Ya me he inscrito" en una ficha del Buscador también la apunta, y
+las que no pasaron por aquí se añaden a mano.
 
-"Enviar al Optimizador" lleva la oferta completa al paso 2 del Optimizador. Si solo tenemos un extracto,
-intenta leer la oferta entera; si no puede, te avisa para que la pegues tú.
+En la pestaña Candidaturas cambias el estado (Enviada → En proceso → Entrevista → Oferta, Rechazada, Sin
+respuesta, Retirada) y queda la fecha de cada cambio; añades notas; y ves el resumen: cuántas, esta semana,
+compatibilidad media, cuántas te han respondido y si responden más cuando el CV encaja más. Las que llevan
+3 semanas sin noticias se señalan. "Exportar a Excel" descarga un CSV que Excel abre directamente.
+
+Si te inscribes con la API apagada, la candidatura espera en el navegador y se guarda sola en cuanto
+vuelva. Todo vive en la carpeta de datos de tu equipo, sin copia en la nube: el CSV es tu copia de
+seguridad.
 
 ## Búsquedas automáticas
 
@@ -86,7 +117,8 @@ powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1 -Quitar
 ```
 
 Crea dos tareas en el Programador de tareas de Windows para tu usuario (sin ventana, sin guardar tu
-contraseña). Solo se ejecutan con tu sesión iniciada.
+contraseña). Solo se ejecutan con tu sesión iniciada. Es opcional: el acceso directo ya busca solo al
+abrirlo si hace falta.
 
 ### Cambiar las Reglas de Oro
 

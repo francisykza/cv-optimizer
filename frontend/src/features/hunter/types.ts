@@ -60,6 +60,8 @@ export interface Health {
   groq_key_configured: boolean
   token_configured: boolean
   last_run: { id: string; status: RunStatus; finished_at: string | null } | null
+  /** Minutos sin uso tras los que se apaga sola (null: arrancada a mano). */
+  auto_shutdown_minutes?: number | null
 }
 
 export interface SourceRun {
@@ -91,6 +93,8 @@ export interface Run {
     judged: number
     judge_failed: number
     cache_hits: number
+    /** Ofertas en la cola del juez al empezar a juzgar: con judged + judge_failed da el progreso. */
+    judge_queue?: number
   }
   tokens_used: number
   budget_exhausted: boolean
@@ -170,4 +174,86 @@ export interface RulesSaved {
   reevaluated: number
   now_pending_judge: number
   now_discarded: number
+}
+
+// --- Candidaturas (SPEC §18.4) -------------------------------------------------------------------
+
+export type ApplicationStatus =
+  'applied' | 'in_process' | 'interview' | 'offer' | 'rejected' | 'no_response' | 'withdrawn'
+export type ApplicationSource = 'optimizer' | 'hunter' | 'manual'
+
+export interface ApplicationEvent {
+  status: ApplicationStatus
+  at: string
+}
+
+/** Alta de una candidatura. El id lo genera el navegador: reenviarla desde la cola no la duplica. */
+export interface ApplicationInput {
+  id: string
+  company: string
+  title: string
+  source: ApplicationSource
+  job_id?: string | null
+  url?: string | null
+  location?: string
+  applied_at?: string
+  ats_score_before?: number | null
+  ats_score_after?: number | null
+  judge_score?: number | null
+  notes?: string
+  offer_text?: string | null
+  cv_markdown?: string | null
+}
+
+export interface ApplicationItem {
+  id: string
+  job_id: string | null
+  company: string
+  title: string
+  url: string | null
+  location: string
+  source: ApplicationSource
+  status: ApplicationStatus
+  applied_at: string
+  status_changed_at: string
+  ats_score_before: number | null
+  ats_score_after: number | null
+  judge_score: number | null
+  notes: string
+  has_offer_text: boolean
+  has_cv: boolean
+  events: ApplicationEvent[]
+  /** Enviada hace más de 3 semanas sin noticias. */
+  stale: boolean
+}
+
+export interface ApplicationDetail extends ApplicationItem {
+  offer_text: string | null
+  cv_markdown: string | null
+}
+
+export interface ApplicationUpdate {
+  status?: ApplicationStatus
+  notes?: string
+  company?: string
+  title?: string
+  url?: string | null
+}
+
+export interface ApplicationStats {
+  total: number
+  last_7_days: number
+  awaiting: number
+  responded: number
+  interviews: number
+  offers: number
+  stale: number
+  avg_ats_after: number | null
+  by_band: { label: string; total: number; responded: number }[]
+}
+
+export interface ApplicationsPage {
+  items: ApplicationItem[]
+  total: number
+  stats: ApplicationStats
 }

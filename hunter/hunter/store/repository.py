@@ -7,7 +7,18 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from hunter.models import AppStatus, GuillotineResult, NormalizedJob, Run, RunCounts, SourceRun, Stage
+from hunter.models import (
+    ApplicationEvent,
+    ApplicationIn,
+    ApplicationRecord,
+    AppStatus,
+    GuillotineResult,
+    NormalizedJob,
+    Run,
+    RunCounts,
+    SourceRun,
+    Stage,
+)
 from hunter.pipeline.dedup import Candidate, title_level
 from hunter.rules.engine import JobFacts
 from hunter.rules.schema import GoldenRules
@@ -569,3 +580,177 @@ class Repository:
                 "DELETE FROM seen_fingerprints WHERE last_seen < ?", (_iso(fingerprints_older_than),)
             )
         return cur.rowcount
+
+    # --- Candidaturas (Fase 4) -----------------------------------------------------------
+
+    def create_application(self, app: ApplicationIn, now: datetime) -> bool:
+        """Guarda la candidatura con su primer evento ("applied") y marca la oferta del Buscador como
+        `applied`. Devuelve False si ya existía (el cliente reenvía el mismo id): no cambia nada."""
+        applied_at = _iso(app.applied_at or now)
+        stamp = _iso(now)
+        with self.transaction():
+            cur = self.conn.execute(
+                """INSERT OR IGNORE INTO applications (id, job_id, company, title, url, location, source,
+                       status, applied_at, status_changed_at, ats_score_before, ats_score_after,
+                       judge_score, notes, offer_text, cv_markdown, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'applied', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    app.id,
+                    app.job_id,
+                    app.company,
+                    app.title,
+                    app.url,
+                    app.location,
+                    app.source,
+                    applied_at,
+                    applied_at,
+                    app.ats_score_before,
+                    app.ats_score_after,
+                    app.judge_score,
+                    app.notes,
+                    app.offer_text,
+                    app.cv_markdown,
+                    stamp,
+                    stamp,
+                ),
+            )
+            if cur.rowcount == 0:
+                return False
+            self.conn.execute(
+                "INSERT INTO application_events (application_id, status, at) VALUES (?, 'applied', ?)",
+                (app.id, applied_at),
+            )
+            if app.job_id:
+                self.conn.execute("UPDATE jobs SET app_status = 'applied' WHERE id = ?", (app.job_id,))
+        return True
+
+    def applications(self) -> list[ApplicationRecord]:
+        """Todas, de la más reciente a la más antigua, sin los textos largos."""
+        rows = self.conn.execute(
+            """SELECT id, job_id, company, title, url, location, source, status, applied_at,
+                      status_changed_at, ats_score_before, ats_score_after, judge_score, notes,
+                      offer_text IS NOT NULL AS has_offer_text, cv_markdown IS NOT NULL AS has_cv
+               FROM applications ORDER BY applied_at DESC, created_at DESC"""
+        ).fetchall()
+        events = self._application_events()
+        return [self._application(r, events.get(r["id"], [])) for r in rows]
+
+    def get_application(self, app_id: str) -> ApplicationRecord | None:
+        """Una candidatura completa, con la copia de la oferta y el CV enviado."""
+        row = self.conn.execute(
+            "SELECT *, offer_text IS NOT NULL AS has_offer_text, cv_markdown IS NOT NULL AS has_cv "
+            "FROM applications WHERE id = ?",
+            (app_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        record = self._application(row, self._application_events(app_id).get(app_id, []))
+        return record.model_copy(update={"offer_text": row["offer_text"], "cv_markdown": row["cv_markdown"]})
+
+    # Columnas editables y su fragmento SQL: lista cerrada, nunca texto que venga del cliente.
+    _EDITABLE = {
+        "status": "status = ?",
+        "notes": "notes = ?",
+        "company": "company = ?",
+        "title": "title = ?",
+        "url": "url = ?",
+    }
+
+    def update_application(self, app_id: str, changes: dict[str, object], now: datetime) -> bool:
+        """Aplica los cambios permitidos. Un cambio de estado deja un evento con su fecha.
+        Devuelve False si la candidatura no existe."""
+        fields = {k: v for k, v in changes.items() if k in self._EDITABLE}
+        with self.transaction():
+            row = self.conn.execute("SELECT status FROM applications WHERE id = ?", (app_id,)).fetchone()
+            if row is None:
+                return False
+            sets = [self._EDITABLE[k] for k in fields] + ["updated_at = ?"]
+            params: list[object] = [*fields.values(), _iso(now)]
+            status = fields.get("status")
+            if status is not None and status != row["status"]:
+                sets.append("status_changed_at = ?")
+                params.append(_iso(now))
+                self.conn.execute(
+                    "INSERT INTO application_events (application_id, status, at) VALUES (?, ?, ?)",
+                    (app_id, status, _iso(now)),
+                )
+            self.conn.execute(
+                "UPDATE applications SET " + ", ".join(sets) + " WHERE id = ?",  # noqa: S608
+                (*params, app_id),
+            )
+        return True
+
+    def delete_application(self, app_id: str) -> bool:
+        """Borra la candidatura y su historial. Si era la única de una oferta del Buscador, la oferta
+        deja de figurar como `applied`."""
+        with self.transaction():
+            row = self.conn.execute("SELECT job_id FROM applications WHERE id = ?", (app_id,)).fetchone()
+            if row is None:
+                return False
+            self.conn.execute("DELETE FROM applications WHERE id = ?", (app_id,))
+            job_id = row["job_id"]
+            others = self.conn.execute(
+                "SELECT 1 FROM applications WHERE job_id = ? LIMIT 1", (job_id,)
+            ).fetchone()
+            if job_id and others is None:
+                self.conn.execute(
+                    "UPDATE jobs SET app_status = 'none' WHERE id = ? AND app_status = 'applied'", (job_id,)
+                )
+        return True
+
+    def _application_events(self, app_id: str | None = None) -> dict[str, list[ApplicationEvent]]:
+        sql = "SELECT application_id, status, at FROM application_events"
+        params: tuple[str, ...] = ()
+        if app_id is not None:
+            sql += " WHERE application_id = ?"
+            params = (app_id,)
+        events: dict[str, list[ApplicationEvent]] = {}
+        for r in self.conn.execute(sql + " ORDER BY at, rowid", params):
+            events.setdefault(r["application_id"], []).append(
+                ApplicationEvent(status=r["status"], at=_dt(r["at"]))
+            )
+        return events
+
+    @staticmethod
+    def _application(row: sqlite3.Row, events: list[ApplicationEvent]) -> ApplicationRecord:
+        return ApplicationRecord(
+            id=row["id"],
+            job_id=row["job_id"],
+            company=row["company"],
+            title=row["title"],
+            url=row["url"],
+            location=row["location"],
+            source=row["source"],
+            status=row["status"],
+            applied_at=_dt(row["applied_at"]),
+            status_changed_at=_dt(row["status_changed_at"]),
+            ats_score_before=row["ats_score_before"],
+            ats_score_after=row["ats_score_after"],
+            judge_score=row["judge_score"],
+            notes=row["notes"],
+            has_offer_text=bool(row["has_offer_text"]),
+            has_cv=bool(row["has_cv"]),
+            events=events,
+        )
+
+    # --- Emparejado del navegador (Fase 4) -----------------------------------------------
+
+    def create_pairing_code(self, code_sha256: str, expires_at: datetime) -> None:
+        with self.transaction():
+            self.conn.execute("DELETE FROM pairing_codes WHERE expires_at < ?", (_iso(utcnow()),))
+            self.conn.execute(
+                "INSERT INTO pairing_codes (code_sha256, expires_at) VALUES (?, ?)",
+                (code_sha256, _iso(expires_at)),
+            )
+
+    def consume_pairing_code(self, code_sha256: str, now: datetime) -> bool:
+        """Un solo uso: el código se borra al canjearlo. False si no existe o ha caducado."""
+        with self.transaction():
+            row = self.conn.execute(
+                "SELECT expires_at FROM pairing_codes WHERE code_sha256 = ?", (code_sha256,)
+            ).fetchone()
+            self.conn.execute(
+                "DELETE FROM pairing_codes WHERE code_sha256 = ? OR expires_at < ?",
+                (code_sha256, _iso(now)),
+            )
+        return row is not None and _dt(row["expires_at"]) >= now

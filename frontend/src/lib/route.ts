@@ -7,6 +7,11 @@ export function parseRoute(hash: string): Route {
   return hash.replace(/^#\/?/, '').split(/[/?]/)[0] === 'buscar' ? 'buscar' : 'optimizar'
 }
 
+/** Sección dentro de una vista: `#/buscar/candidaturas` → 'candidaturas'. */
+export function routeSection(hash: string = window.location.hash): string | null {
+  return hash.replace(/^#\/?/, '').split('?')[0].split('/')[1] || null
+}
+
 export function navigate(route: Route): void {
   window.location.hash = route === 'buscar' ? '#/buscar' : '#/optimizar'
 }

@@ -151,7 +151,7 @@
     "max_age_days": 21
   },
   "judge": {
-    "profile_file": "data/profile.md",
+    "profile_file": "profile.md",
     "priorities": [
       "aprender IA aplicada en producción",
       "mentoría",

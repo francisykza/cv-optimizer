@@ -15,7 +15,7 @@ const MODALITY: Record<JobItem['modality'], string> = {
 const STATUS_NOTE: Partial<Record<AppStatus, string>> = {
   saved: 'Guardada',
   sent_to_optimizer: 'Enviada al Optimizador',
-  applied: 'Inscrito',
+  applied: 'Inscrito: está en tus candidaturas',
   dismissed: 'Descartada por ti',
 }
 
@@ -37,6 +37,8 @@ export interface JobCardActions {
   onSend: (job: JobItem, card: HTMLElement | null) => void
   onStatus: (job: JobItem, status: AppStatus) => void
   onRejudge: (job: JobItem) => void
+  /** "Ya me he inscrito": la apunta en Candidaturas (con la nota del juez). */
+  onApplied: (job: JobItem) => void
 }
 
 interface JobCardProps extends JobCardActions {
@@ -115,7 +117,7 @@ const DiscardedCard = forwardRef<HTMLElement, { job: JobItem; where: string }>(f
 })
 
 export const JobCard = forwardRef<HTMLElement, JobCardProps>(function JobCard(
-  { job, busy, onSend, onStatus, onRejudge },
+  { job, busy, onSend, onStatus, onRejudge, onApplied },
   ref,
 ) {
   const [open, setOpen] = useState(false)
@@ -261,7 +263,7 @@ export const JobCard = forwardRef<HTMLElement, JobCardProps>(function JobCard(
             {job.app_status !== 'applied' && (
               <button
                 type="button"
-                onClick={() => onStatus(job, 'applied')}
+                onClick={() => onApplied(job)}
                 disabled={busy === 'status'}
                 className="focus-ring h-9 rounded-md px-3 text-sm font-medium text-ink ring-1 ring-slate-300 transition hover:bg-slate-50 disabled:opacity-60"
               >

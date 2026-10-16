@@ -36,6 +36,13 @@ def test_health(client):
     assert response.headers["x-request-id"]
 
 
+def test_status_is_health_under_a_path_blockers_allow(client):
+    """EasyPrivacy bloquea `||onrender.com/health`: el frontend comprueba el servidor aquí."""
+    response = client.get("/api/v1/status")
+    assert response.status_code == 200
+    assert response.json() == client.get("/health").json()
+
+
 # --- /optimize: camino feliz ------------------------------------------------------------------
 
 def test_optimize_with_server_key(client, groq_mock):

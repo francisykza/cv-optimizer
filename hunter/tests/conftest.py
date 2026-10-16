@@ -21,6 +21,12 @@ LONG_DESCRIPTION = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ningún test escribe en la carpeta de datos real (en Windows, %LOCALAPPDATA%)."""
+    monkeypatch.setenv("HUNTER_DATA_DIR", str(tmp_path / "data"))
+
+
 @pytest.fixture
 def repo() -> Repository:
     return Repository(connect(":memory:"))

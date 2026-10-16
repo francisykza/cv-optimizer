@@ -13,6 +13,7 @@ import {
   injectExperience,
   injectSkill,
 } from '../../lib/injectSkill'
+import type { OfferSource } from '../../lib/offerSource'
 import type { HighlightGroup } from '../../lib/rehypeHighlightTerms'
 import { UNGROUNDED_CODES, type MatchReport, type OptimizeResponse } from '../../types/api'
 import { Clipboard } from '../ui/Clipboard'
@@ -24,6 +25,7 @@ import { InsightList } from './InsightList'
 import { KeywordList } from './KeywordList'
 import { MarkdownPreview } from './MarkdownPreview'
 import { MatchScoreCard } from './MatchScoreCard'
+import { NextStep } from './NextStep'
 import { PitchPanel } from './PitchPanel'
 import { WarningsPanel } from './WarningsPanel'
 
@@ -32,9 +34,15 @@ type Tab = 'preview' | 'markdown' | 'pitch'
 interface ResultViewerProps {
   result: OptimizeResponse
   onReset: () => void
+  /** De dónde salió la oferta (Buscador o enlace): para volver a ella y apuntar la candidatura. */
+  offer?: OfferSource | null
+  /** El texto de la oferta que se optimizó (se guarda una copia con la candidatura). */
+  offerText?: string
+  /** Buscador activado: se puede apuntar la candidatura con su compatibilidad. */
+  tracking?: boolean
 }
 
-export function ResultViewer({ result, onReset }: ResultViewerProps) {
+export function ResultViewer({ result, onReset, offer = null, offerText = '', tracking = false }: ResultViewerProps) {
   const [tab, setTab] = useState<Tab>('preview')
   const [showChanges, setShowChanges] = useState(true)
   // Habilidades sugeridas que el usuario ha decidido añadir. El CV visible se deriva del Markdown
@@ -167,6 +175,15 @@ export function ResultViewer({ result, onReset }: ResultViewerProps) {
           </p>
         </div>
       )}
+
+      <NextStep
+        offer={offer}
+        offerText={offerText}
+        markdown={markdown}
+        scoreBefore={match.score_before}
+        scoreAfter={match.score_after}
+        tracking={tracking}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="card overflow-hidden">

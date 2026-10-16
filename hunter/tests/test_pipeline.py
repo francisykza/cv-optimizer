@@ -220,6 +220,7 @@ async def test_full_run_judges_and_ranks(repo, rules, make_raw) -> None:
     )
     assert run.status == "ok"
     assert (run.counts.judged, run.counts.pending_judge, run.tokens_used) == (2, 0, 2600)
+    assert run.counts.judge_queue == 2  # progreso: "2 de 2"
     judged = sorted(
         repo.jobs_by_stage("judged", utcnow() - timedelta(days=1)), key=lambda j: -(j.rank_score or 0)
     )

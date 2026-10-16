@@ -154,6 +154,8 @@ class Pipeline:
         if limit is not None:
             queue = queue[:limit]
         logger.info("judge_started run=%s pending=%d", run.id, len(queue))
+        run.counts.judge_queue = len(queue)
+        self.repo.heartbeat(run.id, run.counts)  # la vista muestra "0 de N" desde el primer momento
         errors_in_a_row = 0
         for job in queue:
             try:

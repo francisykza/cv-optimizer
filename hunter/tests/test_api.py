@@ -36,6 +36,7 @@ def make_settings(tmp_path: Path, **overrides) -> Settings:
         hunter_db_path=tmp_path / "hunter.db",
         hunter_token=TOKEN,
         hunter_allowed_origins=ORIGIN,
+        hunter_allowed_hosts="testserver",
         groq_api_key="",
         hunter_retention_days=0,
         hunter_source_timeout_s=1,
@@ -298,7 +299,7 @@ def test_rejudge_with_key(tmp_path: Path, make_raw, monkeypatch) -> None:
     repo.conn.close()
     profile = tmp_path / "profile.md"
     profile.write_text("Python, LLM", encoding="utf-8")
-    monkeypatch.setattr(services, "profile_path", lambda rules: profile)
+    monkeypatch.setattr(services, "profile_path", lambda rules, settings: profile)
     provider = FakeProvider(verdict_payload(match_score=77))
     monkeypatch.setattr(services, "GroqProvider", lambda **kwargs: provider)
     with TestClient(create_app(settings)) as client:

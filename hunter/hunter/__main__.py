@@ -1,10 +1,11 @@
 """CLI del Job Hunter: `python -m hunter <comando>` (desde la carpeta `hunter/`).
 
 Comandos:
-  init                  crea data/, el token local, el perfil y activa las reglas de ejemplo
+  init                  crea la carpeta de datos, el token local, el perfil y activa las reglas de ejemplo
+  open                  lo que hace el acceso directo: arranca la API si hace falta y abre el Buscador
   run                   ingesta + guillotina + juez IA (--mode ingest_only: sin tokens)
   show ID / rejudge ID  veredicto de una oferta / volver a juzgarla sin caché
-  serve                 API local en 127.0.0.1:8001 para la vista Buscador del frontend
+  serve                 API local en 127.0.0.1:8001 para la vista Buscador (--idle N: se apaga sola)
   rules show|export     muestra o exporta las reglas activas
   rules import FICHERO  valida, guarda y activa unas reglas, y re-evalúa las ofertas recientes
   simulate FICHERO      qué cambiaría con otras reglas (sin guardar nada ni gastar tokens)
@@ -27,7 +28,7 @@ from pathlib import Path
 from app.core.logging import RedactSecretsFilter, setup_logging
 from pydantic import ValidationError
 
-from hunter import services
+from hunter import launcher, services
 from hunter.config import HUNTER_ROOT, Settings, get_settings
 from hunter.judge.judge import JudgeOutcome, JudgeStoppedError
 from hunter.judge.limiter import BudgetGuard, QuotaExhaustedError
@@ -56,7 +57,7 @@ _STATUS_LABEL = {
 
 def _configure_logging(settings: Settings) -> None:
     setup_logging(settings.log_level)
-    log_dir = settings.db_path.parent / "logs"
+    log_dir = settings.data_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     handler = TimedRotatingFileHandler(
         log_dir / "hunter.log", when="midnight", backupCount=14, encoding="utf-8"
@@ -91,7 +92,7 @@ def _load_rules_file(path: str) -> GoldenRules:
 
 
 def cmd_init(args: argparse.Namespace, settings: Settings) -> None:
-    settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
     if not ENV_FILE.exists():
         ENV_FILE.write_text(
             "# Generado por `python -m hunter init`. No lo subas al repositorio.\n"
@@ -108,12 +109,13 @@ def cmd_init(args: argparse.Namespace, settings: Settings) -> None:
         print(
             f"Reglas de ejemplo activadas (versión {version}). Ajústalas con `rules export` + `rules import`."
         )
-    profile = services.profile_path(rules)
+    profile = services.profile_path(rules, settings)
     if not profile.exists():
         profile.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(EXAMPLE_PROFILE, profile)
         print(f"Creado {profile}: edítalo con tus habilidades reales.")
     print(f"Base de datos lista en {settings.db_path}")
+    print(f"Tus datos (base de datos, perfil y logs) viven en {settings.data_dir}")
 
 
 def cmd_run(args: argparse.Namespace, settings: Settings) -> None:
@@ -346,15 +348,33 @@ def cmd_serve(args: argparse.Namespace, settings: Settings) -> None:
         sys.exit(f"HUNTER_HOST={settings.hunter_host}: la API local solo puede escuchar en 127.0.0.1.")
     if not (settings.hunter_token and settings.hunter_token.get_secret_value()):
         sys.exit("Falta HUNTER_TOKEN en hunter/.env. Ejecuta primero: python -m hunter init")
+    idle = max(0, args.idle or 0)
+    app = create_app(settings, idle_minutes=idle)
+    server = uvicorn.Server(
+        uvicorn.Config(
+            app,
+            host=settings.hunter_host,
+            port=settings.hunter_port,
+            log_level=settings.log_level.lower(),
+            log_config=None,
+        )
+    )
+    # El apagado por inactividad y el botón "Apagar" de la web paran el servidor así, limpio.
+    app.state.request_exit = lambda: setattr(server, "should_exit", True)
     print(f"API local en http://{settings.hunter_host}:{settings.hunter_port} (Ctrl+C para parar)")
     print(f"Orígenes permitidos: {', '.join(settings.cors_origins)}")
-    uvicorn.run(
-        create_app(settings),
-        host=settings.hunter_host,
-        port=settings.hunter_port,
-        log_level=settings.log_level.lower(),
-        log_config=None,
-    )
+    if idle:
+        print(f"Se apagará sola tras {idle} min sin uso.")
+    server.run()
+
+
+def cmd_open(args: argparse.Namespace, settings: Settings) -> None:
+    try:
+        url = launcher.open_buscador(settings, search=not args.no_search)
+    except launcher.LauncherError as exc:
+        launcher.alert(str(exc))
+        sys.exit(1)
+    print(f"Buscador abierto en el navegador ({url.split('#')[0]}).")
 
 
 def cmd_sources(args: argparse.Namespace, settings: Settings) -> None:
@@ -383,7 +403,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m hunter", description="Job Hunter (ver SPEC.md)")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("init", help="prepara data/, el token, el perfil y las reglas de ejemplo")
+    sub.add_parser("init", help="prepara la carpeta de datos, el token, el perfil y las reglas de ejemplo")
 
     run = sub.add_parser("run", help="busca ofertas, aplica la guillotina y las juzga con IA")
     run.add_argument(
@@ -421,7 +441,14 @@ def build_parser() -> argparse.ArgumentParser:
     rejudge = sub.add_parser("rejudge", help="vuelve a juzgar una oferta ignorando la caché")
     rejudge.add_argument("job_id")
 
-    sub.add_parser("serve", help="arranca la API local para la vista Buscador")
+    serve = sub.add_parser("serve", help="arranca la API local para la vista Buscador")
+    serve.add_argument(
+        "--idle", type=int, metavar="MIN", help="se apaga sola tras MIN minutos sin uso (lo usa `open`)"
+    )
+    open_ = sub.add_parser("open", help="arranca la API si hace falta y abre el Buscador ya conectado")
+    open_.add_argument(
+        "--no-search", action="store_true", help="no lanzar una búsqueda aunque la última sea antigua"
+    )
     sub.add_parser("sources", help="estado de las fuentes (circuit breaker)")
     sub.add_parser("purge", help="borra ofertas antiguas sin gestionar")
     return parser
@@ -436,6 +463,7 @@ COMMANDS = {
     "show": cmd_show,
     "rejudge": cmd_rejudge,
     "serve": cmd_serve,
+    "open": cmd_open,
     "sources": cmd_sources,
     "purge": cmd_purge,
 }

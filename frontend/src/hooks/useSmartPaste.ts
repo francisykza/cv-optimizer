@@ -21,8 +21,10 @@ const OCR_FAILED = 'No hemos podido leer texto en la captura. Prueba con una ima
  * - Un único enlace: el backend lee la oferta (Jina Reader).
  * - Una imagen sin texto: OCR en el navegador; el texto se añade al final (varias capturas).
  * - Texto (p. ej. Ctrl+A en la web de la oferta): se limpia y se limita a PASTE_MAX_CHARS.
+ *
+ * `onUrlRead` avisa del enlace leído: el Optimizador lo recuerda para volver a la oferta original.
  */
-export function useSmartPaste(value: string, onChange: (value: string) => void) {
+export function useSmartPaste(value: string, onChange: (value: string) => void, onUrlRead?: (url: string) => void) {
   const [state, setState] = useState<SmartPasteState>({ kind: 'idle' })
   const [notice, setNotice] = useState<SmartPasteNotice | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
@@ -50,6 +52,7 @@ export function useSmartPaste(value: string, onChange: (value: string) => void) 
       setState({ kind: 'url' })
       try {
         appendResult(await extractJobUrl(url, controller.signal))
+        onUrlRead?.(url)
       } catch (err) {
         if (controller.signal.aborted) return
         const message = err instanceof ApiError ? err.message : 'No se ha podido leer el enlace.'
@@ -58,7 +61,7 @@ export function useSmartPaste(value: string, onChange: (value: string) => void) 
         if (!controller.signal.aborted) setState({ kind: 'idle' })
       }
     },
-    [appendResult],
+    [appendResult, onUrlRead],
   )
 
   const readImage = useCallback(

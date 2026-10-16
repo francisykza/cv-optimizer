@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 from app.services.llm.groq import GroqProvider
 
-from hunter.config import HUNTER_ROOT, Settings
+from hunter.config import Settings
 from hunter.judge.judge import Judge, JudgeConfig, JudgeContext
 from hunter.judge.limiter import AdaptiveLimiter, BudgetGuard
 from hunter.models import Run, RunMode, RunTrigger
@@ -33,9 +33,15 @@ def open_repo(settings: Settings) -> Repository:
     return Repository(connect(settings.db_path))
 
 
-def profile_path(rules: GoldenRules) -> Path:
+def profile_path(rules: GoldenRules, settings: Settings) -> Path:
+    """El perfil vive en la carpeta de datos. Las reglas anteriores a la SPEC 0.4.0 lo llaman
+    `data/profile.md` (la carpeta de datos estaba dentro de `hunter/`): equivale a `profile.md`."""
     path = Path(rules.judge.profile_file)
-    return path if path.is_absolute() else HUNTER_ROOT / path
+    if path.is_absolute():
+        return path
+    if path.parts[:1] == ("data",):
+        path = Path(*path.parts[1:]) if len(path.parts) > 1 else Path("profile.md")
+    return settings.data_dir / path
 
 
 def breaker_policy(settings: Settings) -> breaker.BreakerPolicy:
@@ -54,7 +60,7 @@ def build_pipeline(repo: Repository, rules: GoldenRules, settings: Settings) -> 
             source_timeout_s=settings.hunter_source_timeout_s,
             breaker=breaker_policy(settings),
             dedup_window_days=settings.hunter_dedup_window_days,
-            profile_terms=load_profile_terms(profile_path(rules)),
+            profile_terms=load_profile_terms(profile_path(rules, settings)),
         ),
     )
 
@@ -80,7 +86,7 @@ def build_judge(
         timeout_s=settings.hunter_judge_timeout_s,
         reasoning_effort=settings.hunter_reasoning_effort,
     )
-    path = profile_path(rules)
+    path = profile_path(rules, settings)
     try:
         profile_text = path.read_text(encoding="utf-8")
     except OSError as exc:

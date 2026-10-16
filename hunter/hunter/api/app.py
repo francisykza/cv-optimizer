@@ -1,8 +1,11 @@
-"""API local del Job Hunter (SPEC §8): `python -m hunter serve` → http://127.0.0.1:8001.
+"""API local del Job Hunter (SPEC §8 y §18): `python -m hunter serve` → http://127.0.0.1:8001.
 
-- Solo escucha en 127.0.0.1 y exige la cabecera `X-Hunter-Token` (salvo /health). Al ser una cabecera
-  propia, el navegador hace preflight CORS: una web cualquiera no puede lanzar búsquedas ni leer datos.
+- Solo escucha en 127.0.0.1 y exige la cabecera `X-Hunter-Token` (salvo /health y /api/v1/pair). Al
+  ser una cabecera propia, el navegador hace preflight CORS: una web cualquiera no puede lanzar
+  búsquedas ni leer datos. La cabecera Host se valida (DNS rebinding).
+- El navegador recibe el token canjeando el código de un solo uso del lanzador (POST /api/v1/pair).
 - Los runs se lanzan en segundo plano dentro del mismo proceso y se consultan con GET /runs/{id}.
+- Arrancada por el lanzador, se apaga sola tras N minutos sin peticiones (`hunter.api.idle`).
 - Reutiliza el formato de errores, el request_id y el logging del backend del Optimizador.
 """
 
@@ -20,14 +23,19 @@ from app.api.errors import register_exception_handlers
 from app.core.exceptions import AppError
 from app.core.middleware import RequestContextMiddleware
 from app.services.job_url_extractor import extract_job_offer
-from fastapi import APIRouter, Depends, FastAPI, Header, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from hunter import __version__, services
-from hunter.api import views
+from hunter import __version__, applications, pairing, services
+from hunter.api import idle, views
 from hunter.api.schemas import (
+    ApplicationDetail,
+    ApplicationItem,
+    ApplicationsPage,
+    ApplicationUpdate,
     AppStatusUpdate,
     Handoff,
     HealthResponse,
@@ -36,12 +44,15 @@ from hunter.api.schemas import (
     JobsPage,
     JobsView,
     LastRun,
+    PairRequest,
+    PairResponse,
     RulesResponse,
     RulesSaved,
     RulesVersion,
     RunAccepted,
     RunRequest,
     RunsResponse,
+    ShutdownAccepted,
     SimulateRequest,
     SimulateResponse,
     SourceHealthOut,
@@ -49,7 +60,7 @@ from hunter.api.schemas import (
 from hunter.config import Settings, get_settings
 from hunter.judge.judge import JudgeStoppedError
 from hunter.judge.limiter import QuotaExhaustedError
-from hunter.models import AppStatus, Run
+from hunter.models import ApplicationIn, ApplicationRecord, ApplicationStatus, AppStatus, Run
 from hunter.pipeline.run import STALE_RUN_AFTER, RunInProgressError
 from hunter.pipeline.simulate import simulate
 from hunter.rules.schema import GoldenRules
@@ -116,6 +127,38 @@ class JudgeUnavailableError(AppError):
     status_code = 502
     code = "JUDGE_ERROR"
     message = "El juez IA no ha podido responder. Inténtalo de nuevo."
+
+
+class PairCodeInvalidError(AppError):
+    status_code = 401
+    code = "PAIR_CODE_INVALID"
+    message = (
+        "El enlace de conexión ha caducado o ya se usó. Vuelve a abrir el Buscador desde el acceso directo."
+    )
+
+
+class OriginNotAllowedError(AppError):
+    status_code = 403
+    code = "ORIGIN_NOT_ALLOWED"
+    message = "Esta web no puede conectarse a la API local (HUNTER_ALLOWED_ORIGINS)."
+
+
+class ApplicationNotFoundError(AppError):
+    status_code = 404
+    code = "APPLICATION_NOT_FOUND"
+    message = "No existe esa candidatura."
+
+
+class ShutdownUnavailableError(AppError):
+    status_code = 503
+    code = "SHUTDOWN_UNAVAILABLE"
+    message = "Esta API no se puede apagar desde la web: ciérrala con Ctrl+C en su terminal."
+
+
+class ShutdownBusyError(AppError):
+    status_code = 409
+    code = "RUN_IN_PROGRESS"
+    message = "Hay una búsqueda en marcha: espera a que termine para apagar la API."
 
 
 class RulesInvalidError(AppError):
@@ -200,7 +243,7 @@ api = APIRouter(prefix="/api/v1", dependencies=[Depends(require_token)])
 
 
 @public.get("/health", response_model=HealthResponse)
-def health(settings: SettingsDep) -> HealthResponse:
+def health(request: Request, settings: SettingsDep) -> HealthResponse:
     last_run = None
     db_ok = True
     try:
@@ -220,7 +263,22 @@ def health(settings: SettingsDep) -> HealthResponse:
         groq_key_configured=settings.server_api_key is not None,
         token_configured=bool(settings.hunter_token and settings.hunter_token.get_secret_value()),
         last_run=last_run,
+        auto_shutdown_minutes=request.app.state.idle_minutes or None,
     )
+
+
+@public.post("/api/v1/pair", response_model=PairResponse)
+def pair(body: PairRequest, request: Request, repo: RepoDep, settings: SettingsDep) -> PairResponse:
+    """Canjea el código de un solo uso del lanzador por el token local (SPEC §18.2). Solo desde los
+    orígenes del frontend: otra web ni siquiera podría leer la respuesta (CORS), pero se rechaza antes."""
+    if request.headers.get("origin") not in settings.cors_origins:
+        raise OriginNotAllowedError()
+    token = settings.hunter_token.get_secret_value() if settings.hunter_token else ""
+    if not token:
+        raise TokenMissingError()
+    if not pairing.redeem(repo, body.code):
+        raise PairCodeInvalidError()
+    return PairResponse(token=token)
 
 
 @api.get("/rules", response_model=RulesResponse)
@@ -412,19 +470,116 @@ async def handoff(job_id: str, request: Request, repo: RepoDep, settings: Settin
     return result
 
 
+# --- Candidaturas (SPEC §18.4) -----------------------------------------------------------------
+
+
+def find_application(repo: Repository, app_id: str) -> ApplicationRecord:
+    record = repo.get_application(app_id)
+    if record is None:
+        raise ApplicationNotFoundError()
+    return record
+
+
+@api.get("/applications", response_model=ApplicationsPage)
+def list_applications(
+    repo: RepoDep,
+    status: ApplicationStatus | None = None,
+    q: Annotated[str | None, Query(max_length=100)] = None,
+) -> ApplicationsPage:
+    """Todas las candidaturas (más recientes primero) y el resumen, que siempre cuenta todas."""
+    now = utcnow()
+    records = repo.applications()
+    selected = applications.select(records, status=status, q=q)
+    return ApplicationsPage(
+        items=[applications.to_item(r, now) for r in selected],
+        total=len(selected),
+        stats=applications.compute_stats(records, now),
+    )
+
+
+@api.post("/applications", response_model=ApplicationDetail, status_code=201)
+def create_application(body: ApplicationIn, response: Response, repo: RepoDep) -> ApplicationDetail:
+    """Idempotente: reenviar el mismo `id` (cola del navegador) devuelve la existente con 200."""
+    if body.job_id is not None:
+        job = repo.get_job(body.job_id)
+        if job is None or job.id != body.job_id:
+            body = body.model_copy(update={"job_id": None})  # la oferta se purgó: se guarda igual
+    if not repo.create_application(body, utcnow()):
+        response.status_code = 200
+    return applications.to_detail(find_application(repo, body.id), utcnow())
+
+
+@api.get("/applications.csv")
+def export_applications(repo: RepoDep) -> Response:
+    return Response(
+        content=applications.to_csv(repo.applications()),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="candidaturas.csv"'},
+    )
+
+
+@api.get("/applications/{app_id}", response_model=ApplicationDetail)
+def get_application(app_id: str, repo: RepoDep) -> ApplicationDetail:
+    return applications.to_detail(find_application(repo, app_id), utcnow())
+
+
+@api.patch("/applications/{app_id}", response_model=ApplicationItem)
+def update_application(app_id: str, body: ApplicationUpdate, repo: RepoDep) -> ApplicationItem:
+    if not repo.update_application(app_id, body.changes(), utcnow()):
+        raise ApplicationNotFoundError()
+    return applications.to_item(find_application(repo, app_id), utcnow())
+
+
+@api.delete("/applications/{app_id}", status_code=204)
+def delete_application(app_id: str, repo: RepoDep) -> Response:
+    if not repo.delete_application(app_id):
+        raise ApplicationNotFoundError()
+    return Response(status_code=204)
+
+
+# --- Apagado (SPEC §18.3) ----------------------------------------------------------------------
+
+
+@api.post("/shutdown", response_model=ShutdownAccepted, status_code=202)
+async def shutdown(request: Request) -> ShutdownAccepted:
+    """Botón "Apagar" del Buscador. Responde y se apaga un instante después."""
+    state = request.app.state
+    if state.request_exit is None:
+        raise ShutdownUnavailableError()
+    task: asyncio.Task | None = state.run_task
+    if task is not None and not task.done():
+        raise ShutdownBusyError()
+    asyncio.get_running_loop().call_later(0.3, state.request_exit)
+    return ShutdownAccepted()
+
+
 # --- Aplicación --------------------------------------------------------------------------------
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, idle_minutes: int = 0) -> FastAPI:
+    """`idle_minutes` > 0: se apaga sola tras ese tiempo sin peticiones, si quien la arranca le da
+    cómo hacerlo (`app.state.request_exit`, que pone `python -m hunter serve`)."""
     settings = settings or get_settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        watcher: asyncio.Task | None = None
+        if app.state.idle_minutes > 0 and app.state.request_exit is not None:
+            watcher = asyncio.create_task(
+                idle.watch(
+                    app.state.activity,
+                    app.state.idle_minutes * 60,
+                    busy=lambda: app.state.run_task is not None and not app.state.run_task.done(),
+                    request_exit=lambda: app.state.request_exit(),
+                )
+            )
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(15.0, connect=5.0), follow_redirects=True
         ) as client:
             app.state.http_client = client
             yield
+            if watcher is not None:
+                watcher.cancel()
             task: asyncio.Task | None = app.state.run_task
             if task is not None and not task.done():
                 task.cancel()
@@ -433,6 +588,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.run_task = None
     app.state.run_pending = None
+    app.state.idle_minutes = max(0, idle_minutes)
+    app.state.activity = idle.Activity()
+    app.state.request_exit = None  # lo pone `python -m hunter serve`
+
+    @app.middleware("http")
+    async def track_activity(request: Request, call_next):
+        app.state.activity.touch()
+        return await call_next(request)
 
     register_exception_handlers(app)
     app.add_exception_handler(RulesInvalidError, _rules_invalid)
@@ -440,6 +603,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api)
 
     app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -447,7 +611,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Chrome pide permiso para que una web pública (Vercel) llame a 127.0.0.1
         # (Private Network Access): Starlette responde al preflight si se activa.
         allow_private_network=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "X-Hunter-Token"],
         expose_headers=["X-Request-ID"],
         max_age=600,

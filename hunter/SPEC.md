@@ -4,8 +4,8 @@
 |---|---|
 | **Proyecto** | CV-Optimizer · módulo **Job Hunter** (buscador y filtrador inverso de empleo con IA) |
 | **Tipo de documento** | Especificación técnica (SDD del módulo) |
-| **Versión** | 0.3.0 (Fases 1, 2 y 3 implementadas) |
-| **Fecha** | 2026-10-15 |
+| **Versión** | 0.4.0 (Fases 1 a 4 implementadas) |
+| **Fecha** | 2026-10-16 |
 | **Estado** | Aprobado para implementar la Fase 1 |
 | **Autor** | Francisco Muñoz Dorado |
 | **Relación** | Extiende el [SDD de CV-Optimizer](../SDD.md) (v1.8.0, [ADR-011](../SDD.md#adr-011-job-hunter-local-con-estado-y-juez-ia-solo-para-ranking)) |
@@ -18,6 +18,7 @@
 | 0.1.1 | 2026-10-15 | Ajustes al implementar la Fase 1: jobspy ≥ 1.2 registra los fallos en vez de lanzarlos (se capturan sus logs para detectar bloqueos); la capa 3 de dedup no fusiona títulos con distinto nivel (junior/senior); `remote=false` explícito de Arbeitnow cuenta como presencial; idioma `unknown`; "entre X y Y años"; regla `LOC_FOREIGN_COUNTRY` (en el primer run real, LinkedIn devolvió ofertas de EE. UU. para "España" y pasaban por no indicar modalidad); CLI `rules`, `jobs` y `sources`. |
 | 0.2.0 | 2026-10-15 | Fase 2 (juez IA): `LLMVerdict` (lo que se pide) frente a `JobVerdict` (lo que se guarda) con `finalize()`; esquema estricto sin límites de longitud y vuelta a `json_mode` si Groq lo rechaza; citas de ≥ 12 caracteres; juez secuencial; latido de 10 min; caché por `verdict_key` (migración 002); CLI `show`, `rejudge`, `run --retry-failed/--judge-limit`; golden set de 40 ofertas y test live. Run real (16/10/2026): 19/19 ofertas juzgadas con gpt-oss-120b sin 429 ni reparaciones (62.713 tokens), repetición 100 % desde caché (0 tokens), golden live OK con 120b y 20b. Una oferta "USA, remoto" que exigía autorización de trabajo en EE. UU. sacó 78: se amplía `LOC_REMOTE_SCOPE` ("authorization to work in", "work permit for") y el prompt pasa a **v2** con la sección BLOQUEOS (tope de 30 y "skip"); `rules import` re-evalúa también las ya juzgadas. |
 | 0.3.0 | 2026-10-16 | Fase 3: API local (FastAPI, `python -m hunter serve`) con token, CORS y permiso de red local de Chrome (`allow_private_network` de Starlette); vista Buscador (fichas de cartulina, nota del corrector rodeada a mano, descartadas en versión compacta, editor de Reglas de Oro con simulación); puente por `sessionStorage`; `scripts/install_task.ps1`. Cambios respecto al borrador: el handoff es `POST` (marca la oferta como enviada) y `rejudge` responde en el momento con la oferta actualizada. Del run real: el ranking ordena por la nota del juez y el pre-score solo desempata (migración 003), porque un "quizá" de 60 con pre-score 100 quedaba por encima de tres "aplicar" de 78. |
+| 0.4.0 | 2026-10-16 | Fase 4 (§18), a partir del uso real: buscar exigía unos 8 pasos, desde el Optimizador no se podía volver a la oferta y no había seguimiento de candidaturas. Acceso directo del escritorio (`python -m hunter open`) que arranca la API sin ventana, lanza una búsqueda si la última tiene más de 12 h y abre la web conectada con un código de un solo uso; apagado por inactividad y botón "Apagar"; progreso del juez ("5 de 14") y aviso de ofertas nuevas; enlace a la oferta original en el Optimizador; **candidaturas** con la compatibilidad del CV enviado, historial de estados, resumen por tramos de compatibilidad y exportación a Excel (migración 004); datos en `%LOCALAPPDATA%` (fuera de OneDrive); cabecera Host validada; `GET /api/v1/status` en el backend porque EasyPrivacy bloquea `onrender.com/health`. |
 
 ---
 
@@ -40,6 +41,7 @@
 15. [Testing y CI](#15-testing-y-ci)
 16. [Plan de implementación en 3 fases](#16-plan-de-implementación-en-3-fases)
 17. [Riesgos y mitigaciones](#17-riesgos-y-mitigaciones)
+18. [Fase 4: del ranking a la candidatura](#18-fase-4-del-ranking-a-la-candidatura)
 
 ---
 
@@ -673,8 +675,9 @@ model_family = "gpt-oss"   (120b y 20b comparten caché; el modelo real queda en
 
 ## 8. Contratos de la API local
 
-Base: `http://127.0.0.1:8001`. Prefijo `/api/v1` (como el backend). Todas las rutas salvo `/health`
-exigen la cabecera `X-Hunter-Token` (§11). Errores con el mismo formato que el backend
+Base: `http://127.0.0.1:8001`. Prefijo `/api/v1` (como el backend). Todas las rutas salvo `/health` y
+`POST /api/v1/pair` exigen la cabecera `X-Hunter-Token` (§11). Las rutas de la Fase 4 (emparejado,
+candidaturas y apagado) están en §18. Errores con el mismo formato que el backend
 (`ErrorResponse` de `app.schemas.optimize`):
 
 ```json
@@ -815,13 +818,13 @@ Prepara el texto para el Optimizador. Si la descripción tiene < 200 caracteres,
 | Cuota diaria de Groq o presupuesto agotados | El juez se detiene limpio; `pending_judge` se retoma en el siguiente run. |
 | JSON inválido del juez | Reparación 1 vez → `judge_failed` (la UI no se rompe). |
 | El PC se apaga a mitad de run | Cada oferta se confirma en su propia transacción; el siguiente run ve un `running` sin latido (> 10 min: entre dos latidos del juez caben una espera del limitador y una llamada) y lo marca `failed` antes de empezar. Reanudable: nada se procesa dos veces. |
-| La API local no está arrancada | La vista Buscador muestra cómo arrancarla (`python -m hunter serve`); el Optimizador no se ve afectado. |
+| La API local no está arrancada | La vista Buscador manda al acceso directo del escritorio (§18.1); el Optimizador no se ve afectado y una candidatura que se apunte espera en el navegador (§18.4). |
 
 **Idempotencia:** volver a ejecutar un run con los mismos datos no crea ofertas, no duplica veredictos y
 no gasta tokens (capa 1 de dedup + caché de veredictos).
 
 **Observabilidad:** logs JSON en una línea como el backend (`app.core.logging`), en
-`hunter/data/logs/hunter-YYYY-MM-DD.log` con rotación de 14 días. Nunca se registran la clave de Groq,
+`<carpeta de datos>/logs/hunter.log` (§18.6) con rotación diaria de 14 días. Nunca se registran la clave de Groq,
 el token local ni el perfil.
 
 ---
@@ -870,6 +873,10 @@ export function writeHandoff(h: OfferHandoff): void
 export function consumeHandoff(): OfferHandoff | null  // valida forma, versión, longitud y antigüedad (< 10 min); siempre borra la clave
 ```
 
+Desde la SPEC 0.4.0 el traspaso lleva también, opcionales y compatibles con la versión 1, `location`,
+`jobId` y `matchScore`: el Optimizador enseña de dónde viene la oferta con su enlace y la candidatura
+queda enlazada a su ficha (§18.5).
+
 **Flujo de "Enviar al Optimizador":**
 1. `POST /api/v1/jobs/{id}/handoff` → si `complete=false`, aviso "La oferta es un extracto: ábrela y pega
    el texto completo" con enlace; no se envía.
@@ -892,8 +899,12 @@ No cambia nada en `POST /api/v1/optimize` ni en `useOptimize`.
 - CORS restringido a `HUNTER_ALLOWED_ORIGINS` (`http://localhost:5173`, `http://127.0.0.1:5173` y,
   si se quiere usar desde la web desplegada, `https://cv-optimizer-gilt.vercel.app`). Chrome pedirá
   permiso de "acceso a la red local" al llamar a `127.0.0.1` desde la web pública: es esperado.
-- `hunter/data/` (BD, perfil, logs) está en `.gitignore`. En el repo solo `rules.example.json` y
-  `profile.example.md` sin datos reales.
+- Los datos (BD, perfil, logs, candidaturas) viven fuera del repositorio y de OneDrive (§18.6):
+  `%LOCALAPPDATA%\CV-Optimizer\hunter` en Windows, `hunter/data/` (en `.gitignore`) en el resto. En el
+  repo solo `rules.example.json` y `profile.example.md` sin datos reales.
+- La cabecera `Host` se valida (`127.0.0.1` y `localhost`): una web que apunte su dominio a `127.0.0.1`
+  (DNS rebinding) no llega a la API.
+- El navegador recibe el token con un código de un solo uso del lanzador (§18.2), nunca en la URL.
 - La clave de Groq va en `hunter/.env` (gitignored) como `SecretStr`; no viaja al navegador.
 - El texto de las ofertas es **no confiable**: delimitado y escapado en el prompt; en la UI se renderiza
   como texto plano (sin `dangerouslySetInnerHTML`; si se usa Markdown, con `rehype-sanitize` como hoy).
@@ -909,10 +920,16 @@ No cambia nada en `POST /api/v1/optimize` ni en `useOptimize`.
 |---|---|---|
 | `GROQ_API_KEY` | — | Clave personal de Groq. Sin ella, el pipeline funciona hasta la guillotina. |
 | `GROQ_MODEL_PRIMARY` / `GROQ_MODEL_FALLBACK` | `openai/gpt-oss-120b` / `openai/gpt-oss-20b` | Igual que el backend. |
-| `HUNTER_DB_PATH` | `data/hunter.db` | Ruta de SQLite. |
+| `HUNTER_DATA_DIR` | `%LOCALAPPDATA%\CV-Optimizer\hunter` (Windows) o `hunter/data` | Carpeta de datos: BD, perfil y logs (§18.6). |
+| `HUNTER_DB_PATH` | `<carpeta de datos>/hunter.db` | Ruta de SQLite (si solo se fija esta, los datos van a su carpeta). |
 | `HUNTER_HOST` / `HUNTER_PORT` | `127.0.0.1` / `8001` | API local. |
 | `HUNTER_TOKEN` | (lo genera `init`) | Token local. |
-| `HUNTER_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | CORS. |
+| `HUNTER_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173,https://cv-optimizer-gilt.vercel.app` | CORS (y orígenes que pueden canjear el código de emparejado). |
+| `HUNTER_ALLOWED_HOSTS` | `127.0.0.1,localhost` | Cabecera `Host` admitida (DNS rebinding). |
+| `HUNTER_WEB_URL` | `https://cv-optimizer-gilt.vercel.app` | Web que abre el acceso directo (en desarrollo, `http://localhost:5173`). |
+| `HUNTER_IDLE_MINUTES` | `30` | La API que arranca el acceso directo se apaga tras estos minutos sin uso (0 = nunca). |
+| `HUNTER_AUTORUN_HOURS` | `12` | Al abrir, busca si la última búsqueda terminó hace más de estas horas (0 = nunca). |
+| `HUNTER_PAIRING_TTL_S` | `120` | Vida del código de emparejado. |
 | `HUNTER_DAILY_TOKEN_BUDGET` | `150000` | Tokens/día para el juez (ajustar a la cuota real del plan en console.groq.com). |
 | `HUNTER_TOKENS_PER_MINUTE` | `6000` | Punto de partida del limitador; se ajusta solo con `x-ratelimit-limit-tokens`. (El juez es secuencial: en el free tier la concurrencia no aporta nada.) |
 | `HUNTER_JUDGE_TIMEOUT_S` | `60` | Timeout de cada llamada a Groq. |
@@ -946,11 +963,16 @@ cv-optimizer/
 │   ├── .env.example
 │   ├── rules.example.json
 │   ├── profile.example.md
+│   ├── assets/buscador.ico        # icono del acceso directo (Fase 4)
 │   ├── scripts/
-│   │   └── install_task.ps1       # registra las tareas diarias en el Programador de tareas
-│   ├── data/                      # gitignored: hunter.db, profile.md, logs/
+│   │   ├── install_task.ps1       # registra las tareas diarias en el Programador de tareas
+│   │   └── crear_acceso_directo.ps1  # acceso directo "Buscador de empleo" (Fase 4)
+│   ├── data/                      # gitignored, solo fuera de Windows (en Windows: %LOCALAPPDATA%)
 │   ├── hunter/
-│   │   ├── __main__.py            # CLI: init | run | serve | simulate | purge | export
+│   │   ├── __main__.py            # CLI: init | open | run | serve | simulate | purge | export
+│   │   ├── launcher.py            # Fase 4: lo que hace el doble clic (`open`)
+│   │   ├── pairing.py             # Fase 4: códigos de un solo uso
+│   │   ├── applications.py        # Fase 4: resumen, aviso "sin respuesta" y CSV de candidaturas
 │   │   ├── config.py              # Settings (pydantic-settings)
 │   │   ├── models.py              # §4.1
 │   │   ├── rules/
@@ -976,10 +998,11 @@ cv-optimizer/
 │   │   ├── prompts/               # judge_system.v1.md, judge_user.v1.md, judge_repair.v1.md
 │   │   ├── store/
 │   │   │   ├── db.py              # conexión WAL, migraciones
-│   │   │   ├── migrations/001_init.sql
+│   │   │   ├── migrations/001_init.sql … 004_applications.sql
 │   │   │   └── repository.py      # única capa que toca SQL (D6)
 │   │   └── api/
-│   │       ├── main.py            # FastAPI, CORS, token, errores
+│   │       ├── app.py             # FastAPI, CORS, token, Host, errores, rutas
+│   │       ├── idle.py            # Fase 4: apagado por inactividad
 │   │       └── routes/            # health, rules, runs, sources, jobs
 │   └── tests/
 │       ├── fixtures/              # respuestas grabadas de cada fuente (sin red en CI)
@@ -1026,6 +1049,9 @@ Los 204 tests existentes deben seguir en verde sin modificarlos; se añaden test
 | `test_limiter.py` | Parseo de `"2m59.56s"`, espera cuando no cabe, `BudgetGuard`, parada limpia con 429 de cuota diaria. |
 | `test_pipeline.py` | Run completo con fuentes y juez falsos; idempotencia (dos runs = mismos datos, 0 tokens extra); recuperación de run huérfano. |
 | `test_api.py` | Token obligatorio, CORS, contratos de §8 (incluido `handoff` con oferta corta), errores. |
+| `test_applications.py` | Fase 4: alta idempotente, historial de estados, borrado, resumen por tramos, CSV (BOM, `;`, sin fórmulas) y API. |
+| `test_pairing.py` | Fase 4: código de un solo uso y caducado, solo su hash en la BD, origen permitido, cabecera Host, "Apagar" e inactividad. |
+| `test_launcher.py` | Fase 4: cuándo toca buscar (sin bloquearse por un run huérfano), doble clic con la API encendida o apagada, errores visibles, `pythonw.exe`, carpeta de datos y migración concurrente. |
 | `test_golden.py` | Golden set: la guillotina **no descarta ninguna** oferta etiquetada `keep` (recall 100 %) y descarta ≥ 80 % de las `discard`. Juez real marcado `@pytest.mark.live` (fuera de CI). |
 
 ### 15.2 Frontend (vitest)
@@ -1059,6 +1085,15 @@ estricto + reparación + post-validación, `AdaptiveLimiter`, `BudgetGuard`, cac
 `gpt-oss-20b`, que formatea distinto), sin ningún 429 sin gestionar; repetir el run gasta 0 tokens; un
 JSON inválido simulado acaba en `judge_failed` sin romper nada.
 
+### Fase 4 — Del ranking a la candidatura (§18)
+**Entregables:** `python -m hunter open` + acceso directo con icono, emparejado por código, apagado por
+inactividad y botón "Apagar", progreso del juez y aviso de ofertas nuevas, enlace a la oferta original en el
+Optimizador, candidaturas (migración 004, API, pestaña, cola del navegador, CSV), datos fuera de OneDrive,
+`GET /api/v1/status` en el backend.
+**Hecho cuando:** un doble clic abre el Buscador conectado sin terminal ni token; "Enviar al Optimizador" →
+optimizar con Groq → "Me he inscrito con este CV" deja la candidatura con su compatibilidad, la oferta y el
+CV en la pestaña Candidaturas; con la API apagada la candidatura espera y se guarda al volver.
+
 ### Fase 3 — API local, vista Buscador y puente
 **Entregables:** API local (§8) con token y CORS, CLI `serve`, `scripts/install_task.ps1` (runs diarios
 08:30 y 18:30), vista Buscador completa (§10.2), `handoff.ts`, `route.ts`, cambios en `App.tsx`/`Header.tsx`,
@@ -1081,3 +1116,116 @@ del diseño aprobadas antes de publicar.
 | Prompt injection en la oferta | Baja | Bajo | Delimitado y escape, esquema estricto, sin herramientas; el juez solo puntúa. |
 | Términos de uso de portales y feeds | Media | Medio | Uso personal y de bajo volumen, atribución en feeds que la piden, sin evasión de bloqueos. |
 | La BD local crece | Baja | Bajo | Purga a 90 días y huellas mínimas para seguir deduplicando. |
+| Se pierde una candidatura porque la API estaba apagada | Media | Medio | Cola en el navegador con id del cliente; se envía sola al volver la API y el alta es idempotente. |
+| Se pierden las candidaturas (disco, reinstalación) | Baja | Alto | Sin copia en la nube por decisión del usuario (OneDrive lleno): exportación a Excel en un clic. |
+| El token acaba en el historial del navegador | Baja | Bajo | Nunca viaja en la URL: solo un código de un solo uso que caduca a los 2 minutos y se borra de la barra de direcciones. |
+
+---
+
+## 18. Fase 4: del ranking a la candidatura
+
+### 18.1 Por qué y qué cambia
+
+Tras usarlo de verdad, tres problemas: buscar exigía unos 8 pasos (abrir una terminal, arrancar la API,
+abrir la web con `?hunter=1`, pegar el token, buscar y esperar), desde el Optimizador no había forma de
+volver a la oferta para inscribirse, y no había seguimiento de las candidaturas ni del porcentaje de
+compatibilidad con el que se presentaba cada una.
+
+| Antes | Después |
+|---|---|
+| Terminal + `python -m hunter serve` | Doble clic en **Buscador de empleo** (escritorio) |
+| Copiar `HUNTER_TOKEN` de `.env` y pegarlo | La web se conecta sola (código de un solo uso, §18.2) |
+| "Buscar ofertas ahora" y esperar | Si la última búsqueda tiene más de 12 h, empieza sola; progreso "5 de 14" y aviso de ofertas nuevas sin mover la lista |
+| Acordarse de parar la API | Se apaga sola 30 min después de cerrar el Buscador (o "Apagar ahora") |
+| Volver a la oferta: buscarla otra vez | "Abrir la oferta original" en el paso 2 y "Abrir la oferta en …" tras optimizar |
+| Sin seguimiento | Pestaña **Candidaturas**: compatibilidad del CV enviado, estados con fechas, notas, copia de la oferta y del CV, resumen y Excel |
+
+### 18.2 El acceso directo y el emparejado
+
+`python -m hunter open` (lo que ejecuta el acceso directo con `pythonw.exe`, sin ventana):
+
+1. Si `GET /health` no responde, arranca `pythonw -m hunter serve --idle 30` como proceso independiente
+   (`DETACHED_PROCESS`) y espera a que responda (máx. 40 s). Si el puerto lo usa otro programa, lo dice.
+2. Crea un **código de un solo uso** (`secrets.token_urlsafe(24)`, caduca a los 120 s; en la BD solo su
+   SHA-256, tabla `pairing_codes`).
+3. Si la última búsqueda en los portales terminó hace más de `HUNTER_AUTORUN_HOURS` (y no hay otra en
+   marcha con latido reciente), lanza `POST /api/v1/runs`.
+4. Abre `HUNTER_WEB_URL/?hunter=1#/buscar?pair=CÓDIGO`. La vista canjea el código en `POST /api/v1/pair`
+   (solo desde `HUNTER_ALLOWED_ORIGINS`), guarda el token como "recordado" y quita el código de la
+   barra de direcciones.
+
+Los errores se muestran en una ventana de aviso (no hay consola). `scripts/crear_acceso_directo.ps1` crea
+el acceso directo con el icono `assets/buscador.ico` (el logo de la web con una lupa).
+
+```json
+POST /api/v1/pair   { "code": "6tI3lb8F..." }
+200 { "token": "..." }          401 PAIR_CODE_INVALID (caducado o usado)          403 ORIGIN_NOT_ALLOWED
+```
+
+### 18.3 Apagado
+
+- `serve --idle N`: cada petición cuenta como actividad; tras N minutos sin peticiones y sin búsqueda en
+  marcha, el servidor se para limpio (`uvicorn.Server.should_exit`). La web abierta envía un latido cada
+  2 minutos, así que en la práctica se apaga un rato después de cerrarla. `serve` a mano no se apaga solo.
+- `POST /api/v1/shutdown` → `202` y se para un instante después (botón "Apagar ahora"); `409
+  RUN_IN_PROGRESS` si hay una búsqueda en marcha. `GET /health` informa de `auto_shutdown_minutes`.
+
+### 18.4 Candidaturas
+
+Viven en la SQLite del Buscador (decisión del autor, ADR-012 del SDD): un único sitio, duradero y fuera
+de OneDrive. El Optimizador público sigue sin estado: solo se pueden apuntar con el Buscador activado.
+
+**Modelo** (migración 004): `applications` (id del cliente, `job_id` opcional enlazado a la ficha, empresa,
+puesto, enlace, ubicación, origen `optimizer | hunter | manual`, estado, fecha, `ats_score_before`,
+`ats_score_after`, `judge_score`, notas, copia de la oferta y CV enviado) y `application_events` (cada
+cambio de estado con su fecha).
+
+**Estados:** Enviada (`applied`) → En proceso → Entrevista → Oferta / Rechazada / Sin respuesta / Retirada.
+"Ha respondido" = estuvo alguna vez en proceso, entrevista, oferta o rechazo. Una enviada hace más de 3
+semanas sin cambios se marca `stale` y la ficha propone "Marcar «Sin respuesta»".
+
+**Qué compatibilidad se guarda:** la del CV que se envía, `match.score_after` en el momento de pulsar el
+botón, contando las habilidades y la experiencia que haya añadido el usuario; además la de antes y la nota
+del juez del Buscador.
+
+| Ruta | Respuesta |
+|---|---|
+| `GET /api/v1/applications?status=&q=` | `{ items, total, stats }`. `stats` cuenta siempre todas: total, últimos 7 días, enviadas sin respuesta, con respuesta, entrevistas, ofertas, `stale`, compatibilidad media y `by_band` (respuestas por tramo: ≥ 80 %, 60-79 %, < 60 %, sin pasar por el Optimizador). Los items no llevan los textos largos (`has_offer_text`, `has_cv`). |
+| `POST /api/v1/applications` | `201` con la candidatura completa; **idempotente**: el mismo `id` devuelve la existente con `200`. Con `job_id`, la oferta pasa a `app_status = applied` (si ya no existe, se guarda sin enlace). |
+| `GET /api/v1/applications/{id}` | Con `offer_text` y `cv_markdown`. |
+| `PATCH /api/v1/applications/{id}` | `{ status?, notes?, company?, title?, url? }`; un cambio de estado deja un evento. `url` vacía la borra. |
+| `DELETE /api/v1/applications/{id}` | `204`. Si era la única de su oferta, la oferta deja de figurar como `applied`. |
+| `GET /api/v1/applications.csv` | Para Excel en español: `;`, fechas dd/mm/aaaa, BOM UTF-8 y celdas que empiezan por `= + - @` escapadas (inyección CSV: los textos vienen de internet). |
+
+Errores nuevos: `404 APPLICATION_NOT_FOUND`, `503 SHUTDOWN_UNAVAILABLE`.
+
+**Cola del navegador:** si al pulsar "Me he inscrito" la API está apagada (o falta el token), la
+candidatura se guarda en `localStorage['cvopt:applications-outbox']` y se envía sola en cuanto la API
+responde (latido de la web o al abrir el Buscador). Una candidatura que la API rechaza por inválida se
+descarta; un fallo de conexión detiene el envío hasta el siguiente intento.
+
+### 18.5 Volver a la oferta
+
+- `OfferSource` (`frontend/src/lib/offerSource.ts`): de dónde viene la oferta del paso 2. Del Buscador
+  (por el traspaso, con título, empresa, nota y enlace) o de un enlace pegado (`useSmartPaste` avisa del
+  enlace leído). Se olvida si se vacía el texto.
+- Paso 2: "Del Buscador: puesto · empresa · nota 82 — Abrir la oferta original".
+- Tras optimizar, **Siguiente paso** (`NextStep`): "Abrir la oferta en linkedin.com" y, con el Buscador
+  activado, "Me he inscrito con este CV · 86 %". Si no se sabe la empresa (oferta pegada), la pide junto al
+  puesto, que propone a partir de la primera línea de la oferta. Para los visitantes de la web pública solo
+  aparece el enlace, y solo si pegaron uno.
+
+### 18.6 Datos fuera de OneDrive
+
+La carpeta de datos pasa de `hunter/data/` (dentro del repositorio, que está en el Escritorio sincronizado
+con OneDrive) a `%LOCALAPPDATA%\CV-Optimizer\hunter` en Windows (`HUNTER_DATA_DIR`). Las reglas guardadas
+con `profile_file = "data/profile.md"` siguen funcionando: se lee `profile.md` en la carpeta de datos. La
+migración de SQLite se hace ahora con `BEGIN IMMEDIATE` y relee la versión, porque el lanzador y la API
+pueden abrir la base de datos a la vez.
+
+### 18.7 El indicador del servidor y los bloqueadores
+
+La lista EasyPrivacy (uBlock Origin, AdGuard, Adblock Plus…) incluye `||onrender.com/health`: con un
+bloqueador, el ping de calentamiento fallaba siempre y el Optimizador dejaba el botón desactivado 2 minutos
+("Despertando el servidor…"). El backend responde lo mismo en `GET /api/v1/status` y el frontend usa esa
+ruta; `/health` se queda para el health check de Render.

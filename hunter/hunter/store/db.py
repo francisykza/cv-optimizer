@@ -40,21 +40,25 @@ def connect(path: Path | str) -> sqlite3.Connection:
 
 
 def migrate(conn: sqlite3.Connection) -> int:
+    """Cada migración va en su propia transacción IMMEDIATE y la versión se relee dentro: si dos
+    procesos abren la base de datos a la vez (el lanzador y la API), el segundo espera y no la repite."""
     current = conn.execute("PRAGMA user_version").fetchone()[0]
     for number, sql in _migrations():
         if number <= current:
             continue
-        conn.execute("BEGIN")
+        conn.execute("BEGIN IMMEDIATE")
         try:
-            # executescript haría COMMIT por su cuenta; se separan las sentencias a mano.
-            for statement in _split_sql(sql):
-                conn.execute(statement)
-            conn.execute(f"PRAGMA user_version = {number:d}")
+            current = conn.execute("PRAGMA user_version").fetchone()[0]
+            if number > current:
+                # executescript haría COMMIT por su cuenta; se separan las sentencias a mano.
+                for statement in _split_sql(sql):
+                    conn.execute(statement)
+                conn.execute(f"PRAGMA user_version = {number:d}")
+                current = number
             conn.execute("COMMIT")
         except Exception:
             conn.execute("ROLLBACK")
             raise
-        current = number
     return current
 
 

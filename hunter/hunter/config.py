@@ -1,13 +1,30 @@
 """Configuración del Job Hunter (Twelve-Factor: variables de entorno o `hunter/.env`)."""
 
+import os
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Raíz del paquete `hunter/` (donde viven .env, data/ y rules.example.json).
+# Raíz del paquete `hunter/` (donde viven .env y rules.example.json).
 HUNTER_ROOT = Path(__file__).resolve().parent.parent
+
+
+def default_data_dir(env: Mapping[str, str] = os.environ, system: str = os.name) -> Path:
+    r"""Carpeta de datos por defecto (BD, perfil y logs), fuera del repositorio y de las carpetas que
+    sincroniza OneDrive: `%LOCALAPPDATA%\CV-Optimizer\hunter` en Windows y `hunter/data` en el resto."""
+    local = env.get("LOCALAPPDATA")
+    if system == "nt" and local:
+        return Path(local) / "CV-Optimizer" / "hunter"
+    return HUNTER_ROOT / "data"
+
+
+def _absolute(path: Path) -> Path:
+    """Las rutas relativas cuelgan de `hunter/`, no del directorio actual (el Programador de tareas
+    de Windows arranca en System32)."""
+    return path if path.is_absolute() else HUNTER_ROOT / path
 
 
 class Settings(BaseSettings):
@@ -24,10 +41,26 @@ class Settings(BaseSettings):
     hunter_port: int = 8001
     hunter_token: SecretStr | None = None  # lo genera `python -m hunter init`
     # Orígenes del frontend que pueden llamar a la API (separados por comas).
-    hunter_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    hunter_allowed_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,https://cv-optimizer-gilt.vercel.app"
+    )
+    # Valores admitidos en la cabecera Host (protección frente a DNS rebinding).
+    hunter_allowed_hosts: str = "127.0.0.1,localhost"
+
+    # --- Lanzador (Fase 4): `python -m hunter open`, el acceso directo del escritorio ---
+    # Web que abre (la publicada; para desarrollo, http://localhost:5173).
+    hunter_web_url: str = "https://cv-optimizer-gilt.vercel.app"
+    # La API que arranca el lanzador se apaga sola tras estos minutos sin uso (0 = nunca).
+    hunter_idle_minutes: int = 30
+    # Al abrir, busca ofertas si la última búsqueda terminó hace más de estas horas (0 = nunca).
+    hunter_autorun_hours: float = 12.0
+    # Vida del código de un solo uso con el que el navegador recibe el token.
+    hunter_pairing_ttl_s: int = 120
 
     # --- Persistencia ---
-    hunter_db_path: Path = Path("data/hunter.db")
+    # Carpeta de datos (BD, perfil y logs). Por defecto, default_data_dir().
+    hunter_data_dir: Path | None = None
+    hunter_db_path: Path | None = None  # por defecto, <carpeta de datos>/hunter.db
     hunter_retention_days: int = 90
 
     # --- Fuentes ---
@@ -62,6 +95,14 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.hunter_allowed_origins.split(",") if o.strip()]
 
+    @property
+    def allowed_hosts(self) -> list[str]:
+        return [h.strip() for h in self.hunter_allowed_hosts.split(",") if h.strip()]
+
+    @property
+    def web_url(self) -> str:
+        return self.hunter_web_url.strip().rstrip("/")
+
     @field_validator("groq_api_key", "jina_api_key", "hunter_token", mode="before")
     @classmethod
     def _strip_api_key(cls, value: object) -> object:
@@ -85,11 +126,19 @@ class Settings(BaseSettings):
         return models
 
     @property
+    def data_dir(self) -> Path:
+        """Ruta absoluta. Si solo se fija HUNTER_DB_PATH, los datos viven junto a la base de datos."""
+        if self.hunter_data_dir is not None:
+            return _absolute(self.hunter_data_dir)
+        if self.hunter_db_path is not None:
+            return self.db_path.parent
+        return default_data_dir()
+
+    @property
     def db_path(self) -> Path:
-        """Ruta absoluta: las relativas cuelgan de `hunter/`, no del directorio actual
-        (el Programador de tareas de Windows arranca en System32)."""
-        path = self.hunter_db_path
-        return path if path.is_absolute() else HUNTER_ROOT / path
+        if self.hunter_db_path is not None:
+            return _absolute(self.hunter_db_path)
+        return self.data_dir / "hunter.db"
 
 
 @lru_cache

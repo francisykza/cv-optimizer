@@ -14,7 +14,6 @@ from tests.test_sources import FakeSource
 def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_raw) -> Path:
     """CLI apuntando a un directorio temporal, con fuentes falsas (sin red)."""
     monkeypatch.setattr(cli, "HUNTER_ROOT", tmp_path)
-    monkeypatch.setattr(services, "HUNTER_ROOT", tmp_path)
     monkeypatch.setattr(cli, "ENV_FILE", tmp_path / ".env")
     monkeypatch.setenv("HUNTER_DB_PATH", str(tmp_path / "data" / "hunter.db"))
     monkeypatch.setenv("HUNTER_RETENTION_DAYS", "90")

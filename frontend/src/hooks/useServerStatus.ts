@@ -11,7 +11,7 @@ const RETRY_INTERVAL_MS = 5000
 const WAKE_UP_BUDGET_MS = 120_000
 const OFFLINE_RETRY_INTERVAL_MS = 30_000
 
-/** Hace ping a /health al cargar para despertar Render mientras el usuario rellena el formulario.
+/** Hace ping al servidor (/api/v1/status) al cargar para despertar Render mientras el usuario rellena el formulario.
  *
  *  Mientras Render arranca un servicio dormido responde con su propia página de carga, sin
  *  cabeceras CORS, y el navegador lo ve como un error de red. Por eso un fallo no significa
@@ -25,7 +25,7 @@ export function useServerStatus() {
     const controller = new AbortController()
     const start = Date.now()
     let timer: number | undefined
-    let reachable = false // una respuesta real gana a un ping de /health que falle a destiempo
+    let reachable = false // una respuesta real gana a un ping que falle a destiempo
     const wakingTimer = window.setTimeout(
       () => setState((s) => (s === 'checking' ? 'waking' : s)),
       WAKING_THRESHOLD_MS,

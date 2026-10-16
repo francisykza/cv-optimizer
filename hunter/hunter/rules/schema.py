@@ -116,7 +116,7 @@ class FreshnessRules(_Strict):
 class JudgeRules(_Strict):
     """Lo usa el juez IA (Fase 2). No afecta a la guillotina."""
 
-    profile_file: str = "data/profile.md"
+    profile_file: str = "profile.md"  # relativo a la carpeta de datos
     priorities: list[str] = Field(default_factory=list, max_length=10)
     soft_dislikes: list[str] = Field(default_factory=list, max_length=10)
     min_score_to_show: int = Field(default=55, ge=0, le=100)

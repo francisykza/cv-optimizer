@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.9.0 |
+| **Versión** | 1.10.0 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -28,6 +28,7 @@
 | 1.7.0 | 2026-10-15 | Movimiento con narrativa propia (§9.5): tablero que cae y pinza que se cierra, rotulador que corrige la demo, carga con rotuladores trabajando, CV que se imprime, puntuación que cuenta y chips que vuelan al CV. |
 | 1.8.0 | 2026-10-15 | Especificación del módulo Job Hunter (buscador inverso de empleo con IA) en [`hunter/SPEC.md`](hunter/SPEC.md); ADR-011. Sin cambios de código todavía. |
 | 1.9.0 | 2026-10-16 | Job Hunter completo (SPEC del hunter 0.3.0): motor determinista, juez IA en Groq, API local y vista "Buscador" (`#/buscar`, oculta por defecto en la web pública) con el botón "Enviar al Optimizador". El contrato de `/optimize` no cambia. |
+| 1.10.0 | 2026-10-16 | Job Hunter, Fase 4 (SPEC del hunter 0.4.0): acceso directo que arranca la API local y conecta la web sola, apagado por inactividad, enlace a la oferta original en el Optimizador y candidaturas con la compatibilidad del CV enviado (ADR-012). `GET /api/v1/status` para el indicador del servidor, porque EasyPrivacy bloquea `onrender.com/health` (§4.7). |
 
 ---
 
@@ -309,7 +310,7 @@ El plan gratuito de Render suspende el servicio tras unos 15 minutos sin tráfic
 
 **Mitigaciones:**
 
-1. **Warm-up proactivo:** al cargar la SPA se lanza `GET /health` en segundo plano. Cuando el usuario termina de pegar la oferta, el backend suele estar ya despierto.
+1. **Warm-up proactivo:** al cargar la SPA se lanza `GET /api/v1/status` (el mismo contenido que `/health`) en segundo plano. Cuando el usuario termina de pegar la oferta, el backend suele estar ya despierto. No se usa `/health` porque la lista EasyPrivacy de los bloqueadores de anuncios bloquea `onrender.com/health`, y con un bloqueador el botón se quedaba esperando.
 2. **Estado explícito en la UI:** si `/health` tarda más de 3 s, se muestra un banner: *"Despertando el servidor (plan gratuito)…"*.
 3. **Imagen ligera:** Docker `python:3.12.10-slim`, multi-stage y sin dependencias nativas pesadas, para reducir el arranque.
 4. **Opcional:** un cron externo (GitHub Actions `schedule`) que haga ping en horario laboral. Se documenta, pero **está desactivado por defecto** para respetar el uso justo del plan gratuito.
@@ -814,12 +815,14 @@ backend/
 
 Base URL: `https://<render-service>.onrender.com`. OpenAPI disponible en `/docs`, solo en desarrollo (desactivado en producción con `docs_url=None`, o protegido).
 
-#### `GET /health`
+#### `GET /health` · `GET /api/v1/status`
 
 ```json
 200 OK
 { "status": "ok", "version": "1.0.0", "server_llm_available": true }
 ```
+
+`/health` es el health check de Render; el frontend usa `/api/v1/status` (ver §4.7).
 
 #### `POST /api/v1/keys/validate`
 
@@ -1508,6 +1511,22 @@ docker compose up --build
   - (+) Coste 0 €, datos personales en el equipo del usuario, menos bloqueos de portales.
   - (+) ADR-001 y ADR-005 siguen intactos para el producto público.
   - (−) La búsqueda solo corre con el PC encendido y no es demostrable en la web pública sin arrancar la API local. Migrar a la nube solo exige cambiar el repositorio de persistencia.
+
+### ADR-012: Candidaturas en la base de datos local del Buscador
+
+- **Contexto:**
+  - El autor quiere llevar el seguimiento de las ofertas a las que se inscribe y del porcentaje de compatibilidad con el que lo hace, y volver a la oferta desde el Optimizador.
+  - El Optimizador es público y sin estado (ADR-001); el Buscador ya es local y con estado (ADR-011).
+  - Opciones: guardarlas en el navegador (IndexedDB, también para visitantes) o en la SQLite del Buscador.
+- **Decisión** (tomada con el autor):
+  - Las candidaturas viven en la SQLite del Buscador, en `%LOCALAPPDATA%`, **fuera de OneDrive** (el autor lo tiene lleno y no quiere copia en la nube).
+  - Si la API local está apagada, el navegador las guarda en una cola y las envía al volver; el id lo pone el cliente y el alta es idempotente.
+  - Se guarda la compatibilidad del CV que se envía (`score_after` con lo que haya añadido el usuario), la de antes, la nota del juez, una copia de la oferta y el CV enviado.
+  - Solo con el Buscador activado. Para cualquier visitante, el Optimizador solo gana el enlace de vuelta a la oferta cuando la pegó por URL.
+- **Consecuencias:**
+  - (+) Un único sitio duradero, exportable a Excel, con la oferta tal y como estaba (los portales la borran) y el CV exacto enviado.
+  - (+) ADR-001 intacto: el backend público sigue sin guardar nada.
+  - (−) Verlas requiere la API local (un doble clic). Sin copia automática: la exportación a Excel es la copia de seguridad.
 
 ---
 

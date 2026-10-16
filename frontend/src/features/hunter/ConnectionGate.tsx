@@ -40,17 +40,40 @@ export function ConnectionGate({ state, tokenError, onRetry, onToken }: Connecti
       <section className="card max-w-2xl space-y-4 p-5 sm:p-6" aria-labelledby={`${inputId}-t`}>
         <h2 id={`${inputId}-t`} className="flex items-center gap-2 text-base font-semibold">
           <PlugZap className="size-5 text-cobalt-600" aria-hidden />
-          {state === 'offline' ? 'La API local no está arrancada' : 'La API local no tiene token'}
+          {state === 'offline' ? 'La API local está apagada' : 'La API local no tiene token'}
         </h2>
-        <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
-          El Buscador lee las ofertas de tu equipo, no de internet. Abre una terminal en la carpeta{' '}
-          <code className="font-mono">hunter</code> y ejecuta:
-        </p>
-        {state === 'no-token-configured' && <Command>.venv\Scripts\python -m hunter init</Command>}
-        <Command>.venv\Scripts\python -m hunter serve</Command>
+        {state === 'offline' ? (
+          <>
+            <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
+              El Buscador lee las ofertas de tu equipo, no de internet. Haz doble clic en{' '}
+              <strong className="font-semibold text-ink dark:text-white">Buscador de empleo</strong>, en tu escritorio:
+              la enciende y vuelve a abrir esta página ya conectada.
+            </p>
+            <details className="text-sm text-slate-600 dark:text-slate-300">
+              <summary className="focus-ring cursor-pointer rounded font-medium text-cobalt-700 dark:text-cobalt-300">
+                ¿No tienes el acceso directo?
+              </summary>
+              <div className="mt-3 space-y-3">
+                <p>
+                  Abre una terminal en la carpeta <code className="font-mono">hunter</code> y ejecuta:
+                </p>
+                <Command>.venv\Scripts\python -m hunter open</Command>
+                <p>Y para crear el acceso directo en el escritorio:</p>
+                <Command>powershell -ExecutionPolicy Bypass -File scripts\crear_acceso_directo.ps1</Command>
+              </div>
+            </details>
+          </>
+        ) : (
+          <>
+            <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Abre una terminal en la carpeta <code className="font-mono">hunter</code> y ejecuta:
+            </p>
+            <Command>.venv\Scripts\python -m hunter init</Command>
+          </>
+        )}
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Debe quedar escuchando en <code className="font-mono">{HUNTER_URL}</code>. Si usas la web publicada, Chrome te
-          pedirá permiso para acceder a la red local: acéptalo.
+          Escucha en <code className="font-mono">{HUNTER_URL}</code>. Si el navegador pide permiso para acceder a la red
+          local, acéptalo.
         </p>
         <button
           type="button"
@@ -76,8 +99,10 @@ export function ConnectionGate({ state, tokenError, onRetry, onToken }: Connecti
         Conecta con tu API local
       </h2>
       <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
-        Pega el valor de <code className="font-mono">HUNTER_TOKEN</code> de tu archivo{' '}
-        <code className="font-mono">hunter/.env</code>. Solo se usa para hablar con tu propio equipo.
+        Lo más cómodo: abre el Buscador con el acceso directo{' '}
+        <strong className="font-semibold">Buscador de empleo</strong> del escritorio y se conecta solo. Si no, pega aquí
+        el valor de <code className="font-mono">HUNTER_TOKEN</code> de tu archivo{' '}
+        <code className="font-mono">hunter/.env</code>. Solo sirve para hablar con tu propio equipo.
       </p>
       <div>
         <label htmlFor={inputId} className="text-sm font-medium">

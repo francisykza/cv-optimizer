@@ -42,10 +42,19 @@ interface RunPanelProps {
   token: string
   onFinished: () => void
   onAuthError: (error: HunterError) => void
+  /** Cada vez que llega el estado de una búsqueda en marcha (para avisar de ofertas nuevas). */
+  onProgress?: (run: Run) => void
+}
+
+/** "Puntuando 5 de 14": solo cuando el juez ya está trabajando. */
+function judgeProgress(run: Run | null): { done: number; total: number } | null {
+  const total = run?.counts.judge_queue ?? 0
+  if (!run || total <= 0) return null
+  return { done: Math.min(total, run.counts.judged + run.counts.judge_failed), total }
 }
 
 /** "Buscar ofertas ahora" y el resultado de la última búsqueda, fuente a fuente. */
-export function RunPanel({ token, onFinished, onAuthError }: RunPanelProps) {
+export function RunPanel({ token, onFinished, onAuthError, onProgress }: RunPanelProps) {
   const [run, setRun] = useState<Run | null>(null)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -64,6 +73,7 @@ export function RunPanel({ token, onFinished, onAuthError }: RunPanelProps) {
         try {
           const current = await hunterApi.run(token, id)
           setRun(current)
+          onProgress?.(current)
           if (current.status === 'running') {
             poll.current = window.setTimeout(tick, POLL_MS)
           } else {
@@ -77,7 +87,7 @@ export function RunPanel({ token, onFinished, onAuthError }: RunPanelProps) {
       }
       void tick()
     },
-    [token, onFinished, onAuthError],
+    [token, onFinished, onAuthError, onProgress],
   )
 
   useEffect(() => {
@@ -111,6 +121,7 @@ export function RunPanel({ token, onFinished, onAuthError }: RunPanelProps) {
   }
 
   const running = activeId !== null || run?.status === 'running'
+  const progress = running ? judgeProgress(run) : null
 
   return (
     <section
@@ -118,7 +129,30 @@ export function RunPanel({ token, onFinished, onAuthError }: RunPanelProps) {
       aria-live="polite"
     >
       <div className="min-w-0 space-y-2 text-sm">
-        {running ? (
+        {running && progress ? (
+          <div className="space-y-2">
+            <p className="flex items-center gap-2 font-medium">
+              <LoaderCircle className="size-4 animate-spin text-cobalt-600" aria-hidden />
+              La IA está puntuando las ofertas nuevas: {progress.done} de {progress.total}.
+            </p>
+            <div
+              className="h-1.5 max-w-sm overflow-hidden rounded-full bg-cobalt-100 dark:bg-cobalt-500/20"
+              role="progressbar"
+              aria-label="Ofertas puntuadas"
+              aria-valuemin={0}
+              aria-valuemax={progress.total}
+              aria-valuenow={progress.done}
+            >
+              <div
+                className="h-full rounded-full bg-cobalt-500 transition-[width] duration-500"
+                style={{ width: `${(100 * progress.done) / progress.total}%` }}
+              />
+            </div>
+            <p className="text-slate-600 dark:text-slate-300">
+              Puedes ir mirando las que ya tienes: las nuevas se añaden según quedan puntuadas.
+            </p>
+          </div>
+        ) : running ? (
           <p className="flex items-center gap-2 font-medium">
             <LoaderCircle className="size-4 animate-spin text-cobalt-600" aria-hidden />
             Buscando en los portales y pasando las ofertas por tus reglas. Tarda unos minutos.

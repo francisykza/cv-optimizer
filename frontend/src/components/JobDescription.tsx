@@ -1,9 +1,10 @@
-import { ClipboardPaste, Info, LoaderCircle, TriangleAlert, X } from 'lucide-react'
+import { ClipboardPaste, ExternalLink, Info, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useId } from 'react'
 
 import { type SmartPasteState, useSmartPaste } from '../hooks/useSmartPaste'
 import { JOB_OFFER_MAX_CHARS, JOB_OFFER_MIN_CHARS } from '../lib/constants'
 import { cn, formatNumber } from '../lib/format'
+import { offerHost, type OfferSource } from '../lib/offerSource'
 import type { AdjustmentLevel, OutputLanguage } from '../types/api'
 import { SectionCard } from './ui/SectionCard'
 
@@ -17,6 +18,10 @@ interface JobDescriptionProps {
   disabled?: boolean
   /** Avisa mientras se lee un enlace o una captura (para bloquear el botón de optimizar). */
   onBusyChange?: (busy: boolean) => void
+  /** De dónde viene la oferta (Buscador o enlace): se enseña con el enlace a la original. */
+  source?: OfferSource | null
+  /** La oferta se ha leído desde este enlace. */
+  onSourceUrl?: (url: string) => void
 }
 
 const LANGUAGES: { value: OutputLanguage; label: string }[] = [
@@ -43,10 +48,12 @@ export function JobDescription({
   onAdjustmentChange,
   disabled,
   onBusyChange,
+  source,
+  onSourceUrl,
 }: JobDescriptionProps) {
   const adjustmentId = useId()
   const adjustmentHintId = useId()
-  const paste = useSmartPaste(value, onChange)
+  const paste = useSmartPaste(value, onChange, onSourceUrl)
   const textareaId = useId()
   const counterId = useId()
   const languageId = useId()
@@ -62,6 +69,7 @@ export function JobDescription({
       title="Pega la oferta de empleo"
       description="El texto, el enlace o una captura de pantalla (Ctrl+V). Cuanto más completa, mejor."
     >
+      {source && <OfferOrigin source={source} />}
       <label htmlFor={textareaId} className="sr-only">
         Texto de la oferta de empleo
       </label>
@@ -176,6 +184,41 @@ export function JobDescription({
         </p>
       )}
     </SectionCard>
+  )
+}
+
+/** De dónde salió la oferta y el enlace para volver a ella (a inscribirse, al terminar). */
+function OfferOrigin({ source }: { source: OfferSource }) {
+  if (!source.url && !source.company) return null
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 rounded-md bg-desk px-3 py-2 text-sm ring-1 ring-slate-300/70 dark:bg-slate-950 dark:ring-slate-800">
+      <p className="min-w-0 text-slate-600 dark:text-slate-300">
+        {source.from === 'hunter' ? (
+          <>
+            Del Buscador: <span className="font-semibold text-ink dark:text-slate-100">{source.title}</span>
+            {source.company && <> · {source.company}</>}
+            {source.matchScore !== undefined && <> · nota {source.matchScore}</>}
+          </>
+        ) : (
+          source.url && (
+            <>
+              Leída de <span className="font-semibold text-ink dark:text-slate-100">{offerHost(source.url)}</span>
+            </>
+          )
+        )}
+      </p>
+      {source.url && (
+        <a
+          href={source.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="focus-ring inline-flex shrink-0 items-center gap-1 rounded font-medium text-cobalt-700 underline-offset-2 hover:underline dark:text-cobalt-300"
+        >
+          Abrir la oferta original
+          <ExternalLink className="size-3.5" aria-hidden />
+        </a>
+      )}
+    </div>
   )
 }
 

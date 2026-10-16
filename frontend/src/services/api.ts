@@ -73,8 +73,9 @@ function byokHeaders(apiKey?: string): HeadersInit {
   return apiKey ? { 'X-User-API-Key': apiKey, 'X-LLM-Provider': 'groq' } : {}
 }
 
+/** /api/v1/status y no /health: la lista EasyPrivacy de los bloqueadores bloquea `onrender.com/health`. */
 export function checkHealth(signal?: AbortSignal, timeoutMs = 15_000): Promise<HealthResponse> {
-  return request<HealthResponse>('/health', { signal, timeoutMs })
+  return request<HealthResponse>('/api/v1/status', { signal, timeoutMs })
 }
 
 export function validateApiKey(apiKey: string): Promise<KeyValidationResponse> {

@@ -12,6 +12,7 @@ import { Hero } from './components/layout/Hero'
 import { OptimizeButton } from './components/OptimizeButton'
 import { ResultSkeleton } from './components/result/ResultSkeleton'
 import { ResultViewer } from './components/result/ResultViewer'
+import { useLocalApi } from './features/hunter/useLocalApi'
 import { useByokKey } from './hooks/useByokKey'
 import { useCvMemory } from './hooks/useCvMemory'
 import { useOptimize } from './hooks/useOptimize'
@@ -20,6 +21,7 @@ import { JOB_OFFER_MAX_CHARS, JOB_OFFER_MIN_CHARS } from './lib/constants'
 import { stripConsentNoise } from './lib/consentFilter'
 import { consumeHandoff } from './lib/handoff'
 import { motionAllowed } from './lib/motion'
+import type { OfferSource } from './lib/offerSource'
 import { hunterEnabled, useHashRoute } from './lib/route'
 import type { AdjustmentLevel, OutputLanguage } from './types/api'
 
@@ -33,6 +35,12 @@ export default function App() {
 
   const [file, setFile] = useState<File | null>(null)
   const [jobOffer, setJobOffer] = useState('')
+  // De dónde viene la oferta (Buscador o enlace) y la que se optimizó de verdad, para el resultado.
+  const [offerSource, setOfferSource] = useState<OfferSource | null>(null)
+  const [submitted, setSubmitted] = useState<{ text: string; source: OfferSource | null }>({
+    text: '',
+    source: null,
+  })
   const [language, setLanguage] = useState<OutputLanguage>('auto')
   const [adjustment, setAdjustment] = useState<AdjustmentLevel>('deep')
   const cvMemory = useCvMemory(file, setFile)
@@ -46,6 +54,21 @@ export default function App() {
   const route = useHashRoute()
   const view = showHunter && route === 'buscar' ? 'buscar' : 'optimizar'
 
+  // Con el Buscador activado: mantiene viva su API local mientras la web está abierta y envía las
+  // candidaturas que esperaban en este navegador.
+  useLocalApi(showHunter, (saved) =>
+    toast.success(
+      saved === 1
+        ? 'La candidatura que esperaba en este navegador ya está en tus candidaturas'
+        : `Las ${saved} candidaturas que esperaban en este navegador ya están en tus candidaturas`,
+    ),
+  )
+
+  // Sin oferta no hay origen: si se borra el texto, se olvida de dónde venía.
+  useEffect(() => {
+    if (!jobOffer.trim()) setOfferSource(null)
+  }, [jobOffer])
+
   // Oferta enviada desde el Buscador: rellena el paso 2 (se consume una sola vez).
   useEffect(() => {
     if (view !== 'optimizar') return
@@ -55,6 +78,15 @@ export default function App() {
       !jobOffer.trim() || window.confirm('Ya tienes una oferta escrita. ¿La sustituyo por la del Buscador?')
     if (!replace) return
     setJobOffer(stripConsentNoise(handoff.text))
+    setOfferSource({
+      from: 'hunter',
+      url: handoff.sourceUrl,
+      title: handoff.title,
+      company: handoff.company,
+      location: handoff.location,
+      jobId: handoff.jobId,
+      matchScore: handoff.matchScore,
+    })
     setLanguage(handoff.language ?? 'auto')
     toast.success(`Oferta de ${handoff.company} importada desde el Buscador`)
     // Tras el cambio de vista la portada aún se está montando: un scroll suave inmediato se corta.
@@ -91,6 +123,7 @@ export default function App() {
 
   const handleSubmit = () => {
     if (!file || disabledReason) return
+    setSubmitted({ text: stripConsentNoise(jobOffer), source: offerSource })
     void optimize.run({
       file,
       // Los banners de cookies no llegan a la API (el backend vuelve a filtrarlos).
@@ -184,6 +217,8 @@ export default function App() {
                   onAdjustmentChange={setAdjustment}
                   disabled={loading}
                   onBusyChange={setOfferBusy}
+                  source={offerSource}
+                  onSourceUrl={(url) => setOfferSource({ from: 'url', url })}
                 />
               </div>
 
@@ -218,6 +253,9 @@ export default function App() {
                         key={optimize.result.request_id ?? 'result'}
                         result={optimize.result}
                         onReset={optimize.reset}
+                        offer={submitted.source}
+                        offerText={submitted.text}
+                        tracking={showHunter}
                       />
                     )
                   )}

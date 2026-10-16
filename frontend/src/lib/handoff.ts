@@ -12,6 +12,11 @@ export interface OfferHandoff {
   sourceUrl?: string
   language?: 'es' | 'en'
   createdAt: number
+  // Desde la SPEC 0.4.0 (opcionales, compatibles con la versión 1): para volver a la oferta y para
+  // apuntar la candidatura enlazada a su ficha del Buscador.
+  location?: string
+  jobId?: string
+  matchScore?: number
 }
 
 export const HANDOFF_KEY = 'cvopt:handoff'
@@ -41,7 +46,10 @@ function isHandoff(value: unknown, now: number): value is OfferHandoff {
     now - h.createdAt >= 0 &&
     now - h.createdAt <= HANDOFF_MAX_AGE_MS &&
     (h.language === undefined || h.language === 'es' || h.language === 'en') &&
-    (h.sourceUrl === undefined || typeof h.sourceUrl === 'string')
+    (h.sourceUrl === undefined || typeof h.sourceUrl === 'string') &&
+    (h.location === undefined || typeof h.location === 'string') &&
+    (h.jobId === undefined || typeof h.jobId === 'string') &&
+    (h.matchScore === undefined || (typeof h.matchScore === 'number' && h.matchScore >= 0 && h.matchScore <= 100))
   )
 }
 

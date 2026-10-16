@@ -1,7 +1,7 @@
 // Puente Buscador → Optimizador visto desde la app completa (SPEC del hunter §10.3).
 import 'fake-indexeddb/auto'
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
@@ -34,12 +34,38 @@ afterEach(() => {
 
 describe('App y el Buscador', () => {
   it('rellena la oferta con la enviada desde el Buscador', async () => {
-    writeHandoff({ text: OFFER, title: 'Junior AI Engineer', company: 'Acme Labs', language: 'es' })
+    writeHandoff({
+      text: OFFER,
+      title: 'Junior AI Engineer',
+      company: 'Acme Labs',
+      language: 'es',
+      sourceUrl: 'https://www.linkedin.com/jobs/view/1',
+      matchScore: 82,
+    })
     render(<App />)
     const textarea = await screen.findByLabelText('Texto de la oferta de empleo')
     await waitFor(() => expect(textarea).toHaveValue(OFFER.trim())) // pasa por el filtro de cookies, que recorta
     expect(await screen.findByText('Oferta de Acme Labs importada desde el Buscador')).toBeInTheDocument()
     expect(screen.getByLabelText('Idioma del CV')).toHaveValue('es')
+    // De dónde viene y cómo volver a ella para inscribirse.
+    expect(screen.getByText(/Del Buscador:/)).toHaveTextContent(
+      'Del Buscador: Junior AI Engineer · Acme Labs · nota 82',
+    )
+    expect(screen.getByRole('link', { name: /Abrir la oferta original/ })).toHaveAttribute(
+      'href',
+      'https://www.linkedin.com/jobs/view/1',
+    )
+  })
+
+  it('si se borra la oferta, se olvida de dónde venía', async () => {
+    writeHandoff({ text: OFFER, title: 'Junior AI Engineer', company: 'Acme Labs', sourceUrl: 'https://x.example/1' })
+    render(<App />)
+    const textarea = await screen.findByLabelText('Texto de la oferta de empleo')
+    await waitFor(() => expect(textarea).toHaveValue(OFFER.trim()))
+    fireEvent.change(textarea, { target: { value: '' } })
+    await waitFor(() =>
+      expect(screen.queryByRole('link', { name: /Abrir la oferta original/ })).not.toBeInTheDocument(),
+    )
   })
 
   it('sin el Buscador activado no hay pestañas y #/buscar muestra el Optimizador', async () => {

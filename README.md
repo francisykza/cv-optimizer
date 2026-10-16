@@ -229,7 +229,8 @@ La CI ([`ci.yml`](.github/workflows/ci.yml)) ejecuta lint, tests y build en cada
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `GET` | `/health` | Estado del servicio y disponibilidad del modo gratuito. |
+| `GET` | `/health` | Estado del servicio y disponibilidad del modo gratuito (health check de Render). |
+| `GET` | `/api/v1/status` | Lo mismo, para el frontend: los bloqueadores de anuncios (lista EasyPrivacy) bloquean `onrender.com/health`. |
 | `POST` | `/api/v1/optimize` | `multipart/form-data` con `cv_file` (PDF), `job_offer` y `output_language` (`auto` \| `es` \| `en`). Cabeceras opcionales: `X-User-API-Key` y `X-LLM-Provider`. |
 | `POST` | `/api/v1/keys/validate` | Comprueba una clave BYOK (en `X-User-API-Key`) sin consumir tokens. |
 
