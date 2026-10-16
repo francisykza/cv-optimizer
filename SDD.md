@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.8.0 |
+| **Versión** | 1.9.0 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -27,6 +27,7 @@
 | 1.6.2 | 2026-10-15 | Tablero de pinza para la demo, el CV y el pitch; papel siempre claro; rotuladores legibles en modo oscuro; títulos sin marca de reformulado; destino elegible (Habilidades o un puesto) para la experiencia que añade el usuario. |
 | 1.7.0 | 2026-10-15 | Movimiento con narrativa propia (§9.5): tablero que cae y pinza que se cierra, rotulador que corrige la demo, carga con rotuladores trabajando, CV que se imprime, puntuación que cuenta y chips que vuelan al CV. |
 | 1.8.0 | 2026-10-15 | Especificación del módulo Job Hunter (buscador inverso de empleo con IA) en [`hunter/SPEC.md`](hunter/SPEC.md); ADR-011. Sin cambios de código todavía. |
+| 1.9.0 | 2026-10-16 | Job Hunter completo (SPEC del hunter 0.3.0): motor determinista, juez IA en Groq, API local y vista "Buscador" (`#/buscar`, oculta por defecto en la web pública) con el botón "Enviar al Optimizador". El contrato de `/optimize` no cambia. |
 
 ---
 

@@ -82,6 +82,7 @@ class Pipeline:
         now: datetime | None = None,
         judge: Judge | None = None,
         judge_limit: int | None = None,
+        run_id: str | None = None,
     ) -> Run:
         now = now or utcnow()
         orphans = self.repo.fail_orphan_runs(STALE_RUN_AFTER)
@@ -92,7 +93,7 @@ class Pipeline:
             raise RunInProgressError(live)
 
         run = Run(
-            id=uuid.uuid4().hex,
+            id=run_id or uuid.uuid4().hex,
             trigger=trigger,
             mode=mode,
             status="running",
@@ -171,7 +172,7 @@ class Pipeline:
                     break
                 continue
             errors_in_a_row = 0
-            self._save_outcome(job, outcome, judge)
+            self.save_outcome(job, outcome, judge)
             if outcome.status == "judge_failed":
                 run.counts.judge_failed += 1
             else:
@@ -179,7 +180,7 @@ class Pipeline:
                 run.counts.cache_hits += outcome.status == "cache_hit"
             self.repo.heartbeat(run.id, run.counts)
 
-    def _save_outcome(self, job: StoredJob, outcome: JudgeOutcome, judge: Judge) -> None:
+    def save_outcome(self, job: StoredJob, outcome: JudgeOutcome, judge: Judge) -> None:
         with self.repo.transaction():
             if outcome.status != "cache_hit":
                 self.repo.save_verdict(job.id, judge.record(outcome))

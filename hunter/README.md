@@ -6,8 +6,8 @@ las que quedan: encaje 0-100, señales a favor y en contra con su cita literal, 
 inflado.
 Funciona en tu equipo, con SQLite, sin servicios de pago. Diseño completo en [SPEC.md](SPEC.md).
 
-**Estado:** Fases 1 (motor determinista) y 2 (juez IA). La vista "Buscador" con el botón
-"Enviar al Optimizador" (Fase 3) está por llegar.
+**Estado:** completo (SPEC 0.3.0): motor determinista, juez IA, API local y vista "Buscador" en el
+frontend con el botón "Enviar al Optimizador".
 
 ## Instalación
 
@@ -55,6 +55,38 @@ tras 3 fallos seguidos se pausa unas horas (el doble en cada reapertura, máximo
 - Cada señal lleva una cita literal de la oferta; si la cita no aparece en el texto se marca como
   "sin cita verificable". Si el modelo no devuelve JSON válido ni tras una reparación, la oferta queda
   en `judge_failed` (`run --retry-failed` la devuelve a la cola).
+
+## La vista Buscador
+
+1. Arranca la API local (déjala abierta en una terminal):
+
+   ```bash
+   .venv/Scripts/python -m hunter serve
+   ```
+
+   Escucha solo en `http://127.0.0.1:8001` y exige el `HUNTER_TOKEN` de tu `.env`.
+
+2. Abre el frontend con la pestaña Buscador activada:
+   - En local: crea `frontend/.env.local` con `VITE_HUNTER_ENABLED=true` y ejecuta `npm run dev`.
+   - En la web publicada: entra una vez con `?hunter=1` (se recuerda en ese navegador). Añade su
+     dirección a `HUNTER_ALLOWED_ORIGINS` en `.env`; Chrome pedirá permiso para acceder a la red local.
+
+3. La primera vez pega el valor de `HUNTER_TOKEN`. Desde ahí: ranking ("Para ti"), pendientes del juez,
+   descartadas con su motivo y Reglas de Oro con "Ver qué cambiaría" antes de guardar.
+
+"Enviar al Optimizador" lleva la oferta completa al paso 2 del Optimizador. Si solo tenemos un extracto,
+intenta leer la oferta entera; si no puede, te avisa para que la pegues tú.
+
+## Búsquedas automáticas
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1          # 08:30 y 18:30
+powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1 -Manana 09:00 -Tarde 19:00
+powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1 -Quitar
+```
+
+Crea dos tareas en el Programador de tareas de Windows para tu usuario (sin ventana, sin guardar tu
+contraseña). Solo se ejecutan con tu sesión iniciada.
 
 ### Cambiar las Reglas de Oro
 

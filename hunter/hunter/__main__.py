@@ -4,6 +4,7 @@ Comandos:
   init                  crea data/, el token local, el perfil y activa las reglas de ejemplo
   run                   ingesta + guillotina + juez IA (--mode ingest_only: sin tokens)
   show ID / rejudge ID  veredicto de una oferta / volver a juzgarla sin caché
+  serve                 API local en 127.0.0.1:8001 para la vista Buscador del frontend
   rules show|export     muestra o exporta las reglas activas
   rules import FICHERO  valida, guarda y activa unas reglas, y re-evalúa las ofertas recientes
   simulate FICHERO      qué cambiaría con otras reglas (sin guardar nada ni gastar tokens)
@@ -23,22 +24,19 @@ from datetime import timedelta
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
-import httpx
 from app.core.logging import RedactSecretsFilter, setup_logging
-from app.services.llm.groq import GroqProvider
 from pydantic import ValidationError
 
+from hunter import services
 from hunter.config import HUNTER_ROOT, Settings, get_settings
-from hunter.judge.judge import Judge, JudgeConfig, JudgeContext, JudgeOutcome, JudgeStoppedError
-from hunter.judge.limiter import AdaptiveLimiter, BudgetGuard, QuotaExhaustedError
+from hunter.judge.judge import JudgeOutcome, JudgeStoppedError
+from hunter.judge.limiter import BudgetGuard, QuotaExhaustedError
 from hunter.judge.schema import JobVerdict
 from hunter.models import Run
-from hunter.pipeline.prescore import load_profile_terms
-from hunter.pipeline.run import Pipeline, PipelineConfig, RunInProgressError
+from hunter.pipeline.run import RunInProgressError
 from hunter.pipeline.simulate import simulate
 from hunter.rules.schema import GoldenRules
 from hunter.sources import breaker
-from hunter.sources.registry import build_sources
 from hunter.store.db import connect
 from hunter.store.repository import Repository, StoredJob, utcnow
 
@@ -89,27 +87,6 @@ def _load_rules_file(path: str) -> GoldenRules:
         sys.exit("Las reglas no son válidas:\n" + "\n".join(lines))
 
 
-def _pipeline(repo: Repository, rules: GoldenRules, settings: Settings) -> Pipeline:
-    return Pipeline(
-        repo,
-        rules,
-        PipelineConfig(
-            source_timeout_s=settings.hunter_source_timeout_s,
-            breaker=_policy(settings),
-            dedup_window_days=settings.hunter_dedup_window_days,
-            profile_terms=load_profile_terms(_profile_path(rules)),
-        ),
-    )
-
-
-def _policy(settings: Settings) -> breaker.BreakerPolicy:
-    return breaker.BreakerPolicy(
-        settings.hunter_breaker_threshold,
-        settings.hunter_breaker_cooldown_h,
-        settings.hunter_breaker_max_cooldown_h,
-    )
-
-
 # --- Comandos --------------------------------------------------------------------------------
 
 
@@ -131,7 +108,7 @@ def cmd_init(args: argparse.Namespace, settings: Settings) -> None:
         print(
             f"Reglas de ejemplo activadas (versión {version}). Ajústalas con `rules export` + `rules import`."
         )
-    profile = _profile_path(rules)
+    profile = services.profile_path(rules)
     if not profile.exists():
         profile.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(EXAMPLE_PROFILE, profile)
@@ -139,79 +116,29 @@ def cmd_init(args: argparse.Namespace, settings: Settings) -> None:
     print(f"Base de datos lista en {settings.db_path}")
 
 
-def _profile_path(rules: GoldenRules) -> Path:
-    path = Path(rules.judge.profile_file)
-    return path if path.is_absolute() else HUNTER_ROOT / path
-
-
-def _build_judge(
-    repo: Repository, rules: GoldenRules, settings: Settings, client: httpx.AsyncClient
-) -> Judge | None:
-    key = settings.server_api_key
-    if key is None:
-        return None
-    provider = GroqProvider(
-        client=client,
-        api_key=key,
-        models=settings.groq_models,
-        # "byok": es la clave del propio usuario; un 401 se informa como clave no válida.
-        mode="byok",
-        base_url=settings.groq_base_url,
-        timeout_s=settings.hunter_judge_timeout_s,
-        reasoning_effort=settings.hunter_reasoning_effort,
-    )
-    profile = _profile_path(rules)
-    try:
-        profile_text = profile.read_text(encoding="utf-8")
-    except OSError:
-        sys.exit(f"No encuentro el perfil {profile}. Ejecuta `python -m hunter init` y complétalo.")
-    return Judge(
-        provider,
-        repo,
-        AdaptiveLimiter(tokens_per_minute=settings.hunter_tokens_per_minute),
-        BudgetGuard(repo, settings.hunter_daily_token_budget),
-        JudgeContext.from_rules(rules, profile_text),
-        JudgeConfig(
-            model=settings.groq_model_primary,
-            max_input_chars=settings.hunter_judge_max_input_chars,
-            max_output_tokens=settings.hunter_judge_max_output_tokens,
-        ),
-    )
-
-
-def _llm_client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0), follow_redirects=True)
-
-
 def cmd_run(args: argparse.Namespace, settings: Settings) -> None:
     repo = _repo(settings)
     rules = _require_rules(repo)
-    pipeline = _pipeline(repo, rules, settings)
     if args.mode == "judge_only" and settings.server_api_key is None:
         sys.exit("Falta GROQ_API_KEY en hunter/.env para ejecutar el juez.")
     if args.retry_failed:
         print(f"{repo.reset_failed()} ofertas fallidas vuelven a la cola del juez.")
-
-    async def go() -> Run:
-        async with _llm_client() as client:
-            sources = build_sources(rules, client, settings.hunter_source_pause_s)
-            if args.only:
-                sources = [s for s in sources if s.name in args.only]
-            judge = _build_judge(repo, rules, settings, client) if args.mode != "ingest_only" else None
-            return await pipeline.run(
-                sources if args.mode != "judge_only" else [],
-                trigger=args.trigger,
+    try:
+        run = asyncio.run(
+            services.execute_run(
+                repo,
+                rules,
+                settings,
                 mode=args.mode,
-                judge=judge,
+                trigger=args.trigger,
+                only=args.only,
                 judge_limit=args.judge_limit,
             )
-
-    try:
-        run = asyncio.run(go())
+        )
     except RunInProgressError as exc:
         sys.exit(str(exc))
-    if settings.hunter_retention_days > 0:
-        _purge(repo, settings)
+    except services.ProfileMissingError as exc:
+        sys.exit(str(exc))
     _print_run(run, BudgetGuard(repo, settings.hunter_daily_token_budget))
     if run.status == "failed":
         sys.exit(1)
@@ -251,7 +178,9 @@ def cmd_rules(args: argparse.Namespace, settings: Settings) -> None:
             sys.exit("Indica el fichero: python -m hunter rules import reglas.json")
         rules = _load_rules_file(args.file)
         version = repo.save_rules(rules)
-        total, pending, discarded = _pipeline(repo, rules, settings).reevaluate(window_days=args.days)
+        total, pending, discarded = services.build_pipeline(repo, rules, settings).reevaluate(
+            window_days=args.days
+        )
         print(
             f"Reglas {version} activadas. Re-evaluadas {total} ofertas de los últimos {args.days} días: "
             f"{pending} vuelven a pendientes, {discarded} pasan a descartadas."
@@ -384,20 +313,20 @@ def cmd_rejudge(args: argparse.Namespace, settings: Settings) -> None:
         sys.exit("Falta GROQ_API_KEY en hunter/.env para ejecutar el juez.")
 
     async def go() -> JudgeOutcome:
-        async with _llm_client() as client:
-            judge = _build_judge(repo, rules, settings, client)
+        async with services.llm_client() as client:
+            judge = services.build_judge(repo, rules, settings, client)
             if judge is None:
                 sys.exit("Falta GROQ_API_KEY en hunter/.env para ejecutar el juez.")
             outcome = await judge.judge(job, force=True)
             if outcome.status != "error":
-                _pipeline(repo, rules, settings)._save_outcome(job, outcome, judge)
+                services.build_pipeline(repo, rules, settings).save_outcome(job, outcome, judge)
                 if job.stage == "discarded":  # el veredicto se guarda, pero manda la guillotina
                     repo.set_stage(job.id, "discarded")
             return outcome
 
     try:
         outcome = asyncio.run(go())
-    except (JudgeStoppedError, QuotaExhaustedError) as exc:
+    except (JudgeStoppedError, QuotaExhaustedError, services.ProfileMissingError) as exc:
         sys.exit(f"El juez se ha detenido: {exc}")
     if outcome.status == "error":
         sys.exit(f"Error transitorio del juez ({outcome.error}); prueba más tarde.")
@@ -405,9 +334,32 @@ def cmd_rejudge(args: argparse.Namespace, settings: Settings) -> None:
     cmd_show(args, settings)
 
 
+_LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+
+
+def cmd_serve(args: argparse.Namespace, settings: Settings) -> None:
+    import uvicorn  # solo hace falta para servir
+
+    from hunter.api.app import create_app
+
+    if settings.hunter_host not in _LOOPBACK:
+        sys.exit(f"HUNTER_HOST={settings.hunter_host}: la API local solo puede escuchar en 127.0.0.1.")
+    if not (settings.hunter_token and settings.hunter_token.get_secret_value()):
+        sys.exit("Falta HUNTER_TOKEN en hunter/.env. Ejecuta primero: python -m hunter init")
+    print(f"API local en http://{settings.hunter_host}:{settings.hunter_port} (Ctrl+C para parar)")
+    print(f"Orígenes permitidos: {', '.join(settings.cors_origins)}")
+    uvicorn.run(
+        create_app(settings),
+        host=settings.hunter_host,
+        port=settings.hunter_port,
+        log_level=settings.log_level.lower(),
+        log_config=None,
+    )
+
+
 def cmd_sources(args: argparse.Namespace, settings: Settings) -> None:
     repo = _repo(settings)
-    policy = _policy(settings)
+    policy = services.breaker_policy(settings)
     now = utcnow()
     healths = repo.all_source_health()
     if not healths:
@@ -420,14 +372,8 @@ def cmd_sources(args: argparse.Namespace, settings: Settings) -> None:
         print(f"  {h.source:<14} {state}{extra} · fallos seguidos {h.consecutive_failures}{ok}{err}")
 
 
-def _purge(repo: Repository, settings: Settings) -> int:
-    now = utcnow()
-    days = settings.hunter_retention_days
-    return repo.purge(now - timedelta(days=days), now - timedelta(days=days * 2))
-
-
 def cmd_purge(args: argparse.Namespace, settings: Settings) -> None:
-    removed = _purge(_repo(settings), settings)
+    removed = services.purge(_repo(settings), settings)
     print(
         f"Purgadas {removed} ofertas de más de {settings.hunter_retention_days} días (huellas conservadas)."
     )
@@ -475,6 +421,7 @@ def build_parser() -> argparse.ArgumentParser:
     rejudge = sub.add_parser("rejudge", help="vuelve a juzgar una oferta ignorando la caché")
     rejudge.add_argument("job_id")
 
+    sub.add_parser("serve", help="arranca la API local para la vista Buscador")
     sub.add_parser("sources", help="estado de las fuentes (circuit breaker)")
     sub.add_parser("purge", help="borra ofertas antiguas sin gestionar")
     return parser
@@ -488,6 +435,7 @@ COMMANDS = {
     "jobs": cmd_jobs,
     "show": cmd_show,
     "rejudge": cmd_rejudge,
+    "serve": cmd_serve,
     "sources": cmd_sources,
     "purge": cmd_purge,
 }

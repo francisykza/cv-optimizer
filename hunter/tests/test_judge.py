@@ -158,7 +158,7 @@ async def test_cache_avoids_second_call_and_follows_profile(repo, rules, make_ra
     provider = FakeProvider(verdict_payload())
     judge = make_judge(repo, rules, provider)
     first = await judge.judge(job)
-    Pipeline(repo, rules, PipelineConfig())._save_outcome(job, first, judge)
+    Pipeline(repo, rules, PipelineConfig()).save_outcome(job, first, judge)
 
     again = await judge.judge(job)
     assert again.status == "cache_hit" and again.tokens == 0 and len(provider.requests) == 1

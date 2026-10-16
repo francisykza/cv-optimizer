@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer · módulo **Job Hunter** (buscador y filtrador inverso de empleo con IA) |
 | **Tipo de documento** | Especificación técnica (SDD del módulo) |
-| **Versión** | 0.2.0 (Fases 1 y 2 implementadas) |
+| **Versión** | 0.3.0 (Fases 1, 2 y 3 implementadas) |
 | **Fecha** | 2026-10-15 |
 | **Estado** | Aprobado para implementar la Fase 1 |
 | **Autor** | Francisco Muñoz Dorado |
@@ -17,6 +17,7 @@
 | 0.1.0 | 2026-10-15 | Versión inicial tras la auditoría de la Fase 0: worker local + SQLite, deduplicación en 3 capas, guillotina explicable, juez Groq con structured outputs y presupuesto de tokens, puente al Optimizador por `sessionStorage`. |
 | 0.1.1 | 2026-10-15 | Ajustes al implementar la Fase 1: jobspy ≥ 1.2 registra los fallos en vez de lanzarlos (se capturan sus logs para detectar bloqueos); la capa 3 de dedup no fusiona títulos con distinto nivel (junior/senior); `remote=false` explícito de Arbeitnow cuenta como presencial; idioma `unknown`; "entre X y Y años"; regla `LOC_FOREIGN_COUNTRY` (en el primer run real, LinkedIn devolvió ofertas de EE. UU. para "España" y pasaban por no indicar modalidad); CLI `rules`, `jobs` y `sources`. |
 | 0.2.0 | 2026-10-15 | Fase 2 (juez IA): `LLMVerdict` (lo que se pide) frente a `JobVerdict` (lo que se guarda) con `finalize()`; esquema estricto sin límites de longitud y vuelta a `json_mode` si Groq lo rechaza; citas de ≥ 12 caracteres; juez secuencial; latido de 10 min; caché por `verdict_key` (migración 002); CLI `show`, `rejudge`, `run --retry-failed/--judge-limit`; golden set de 40 ofertas y test live. Run real (16/10/2026): 19/19 ofertas juzgadas con gpt-oss-120b sin 429 ni reparaciones (62.713 tokens), repetición 100 % desde caché (0 tokens), golden live OK con 120b y 20b. Una oferta "USA, remoto" que exigía autorización de trabajo en EE. UU. sacó 78: se amplía `LOC_REMOTE_SCOPE` ("authorization to work in", "work permit for") y el prompt pasa a **v2** con la sección BLOQUEOS (tope de 30 y "skip"); `rules import` re-evalúa también las ya juzgadas. |
+| 0.3.0 | 2026-10-16 | Fase 3: API local (FastAPI, `python -m hunter serve`) con token, CORS y permiso de red local de Chrome (`allow_private_network` de Starlette); vista Buscador (fichas de cartulina, nota del corrector rodeada a mano, descartadas en versión compacta, editor de Reglas de Oro con simulación); puente por `sessionStorage`; `scripts/install_task.ps1`. Cambios respecto al borrador: el handoff es `POST` (marca la oferta como enviada) y `rejudge` responde en el momento con la oferta actualizada. Del run real: el ranking ordena por la nota del juez y el pre-score solo desempata (migración 003), porque un "quizá" de 60 con pre-score 100 quedaba por encima de tres "aplicar" de 78. |
 
 ---
 
@@ -622,7 +623,9 @@ desempate. No se muestra como "score" principal.
    - Coherencia: `verdict="apply"` con `match_score < 50` → `maybe`; `verdict="skip"` con
      `match_score ≥ 75` → `maybe`.
    - Listas deduplicadas y recortadas a su máximo; tecnologías normalizadas (`fold`).
-5. `rank_score = 0.8 * match_score + 0.2 * prescore` (desempate: `last_seen` más reciente).
+5. `rank_score = match_score + prescore / 1000`: manda la nota del juez y el pre-score solo desempata.
+   (El borrador decía `0.8 * match_score + 0.2 * prescore`; con datos reales ponía un "quizá" de 60 por
+   encima de tres "aplicar" de 78. Migración 003.)
 
 ### 7.4 Protección de rate-limits y presupuesto
 
@@ -769,9 +772,11 @@ Igual que un item, más `description` completa y el historial de veredictos (`ve
 Cuerpo: `{ "app_status": "saved" | "applied" | "dismissed" | "none" }` → item actualizado.
 
 ### `POST /api/v1/jobs/{id}/rejudge`
-`202 { "job_id", "status": "pending_judge" }`. `429 JUDGE_BUDGET_EXHAUSTED` si no queda presupuesto hoy.
+Juzga en el momento (≈ 5-30 s) y devuelve la oferta actualizada (`JobItem`). Si estaba descartada por la
+guillotina, guarda el veredicto pero sigue descartada. `429 JUDGE_BUDGET_EXHAUSTED` sin cuota o presupuesto;
+`503 GROQ_KEY_MISSING` sin clave; `502 JUDGE_ERROR` si el juez no responde.
 
-### `GET /api/v1/jobs/{id}/handoff`
+### `POST /api/v1/jobs/{id}/handoff`
 Prepara el texto para el Optimizador. Si la descripción tiene < 200 caracteres, intenta completarla con
 `extract_job_offer()` de `app.services.job_url_extractor` (Jina Reader) sobre la URL de la oferta.
 ```json
@@ -782,7 +787,7 @@ Prepara el texto para el Optimizador. Si la descripción tiene < 200 caracteres,
 - `text` empieza por una cabecera `título — empresa (ubicación, modalidad)` para que el Optimizador
   tenga contexto, y se recorta a 15 000 caracteres.
 - `complete=false` si sigue por debajo de 200 caracteres: la UI avisa y ofrece abrir la oferta.
-- Marca la oferta como `app_status = "sent_to_optimizer"`.
+- Si queda completa, marca la oferta como `app_status = "sent_to_optimizer"` (por eso es `POST`).
 
 ### Catálogo de errores
 
@@ -866,7 +871,7 @@ export function consumeHandoff(): OfferHandoff | null  // valida forma, versión
 ```
 
 **Flujo de "Enviar al Optimizador":**
-1. `GET /api/v1/jobs/{id}/handoff` → si `complete=false`, aviso "La oferta es un extracto: ábrela y pega
+1. `POST /api/v1/jobs/{id}/handoff` → si `complete=false`, aviso "La oferta es un extracto: ábrela y pega
    el texto completo" con enlace; no se envía.
 2. `writeHandoff(...)` y `location.hash = '#/optimizar'`.
 3. `App.tsx`, al entrar en la ruta `optimizar`, llama a `consumeHandoff()`; si hay datos:

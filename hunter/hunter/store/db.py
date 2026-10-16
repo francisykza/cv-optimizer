@@ -23,7 +23,12 @@ def connect(path: Path | str) -> sqlite3.Connection:
     if str(path) != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(
-        str(path), timeout=30, isolation_level=None
+        # check_same_thread=False: en la API cada petición tiene su conexión, pero FastAPI puede
+        # abrirla en un hilo del pool y usarla en el del bucle; nunca se comparte entre peticiones.
+        str(path),
+        timeout=30,
+        isolation_level=None,
+        check_same_thread=False,
     )  # autocommit; transacciones explícitas
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")

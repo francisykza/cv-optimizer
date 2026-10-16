@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from hunter.models import GuillotineResult, NormalizedJob, Run, RunCounts, SourceRun, Stage
+from hunter.models import AppStatus, GuillotineResult, NormalizedJob, Run, RunCounts, SourceRun, Stage
 from hunter.pipeline.dedup import Candidate, title_level
 from hunter.rules.engine import JobFacts
 from hunter.rules.schema import GoldenRules
@@ -53,6 +53,7 @@ class StoredJob:
     verdict_key: str | None = None
     rank_score: float | None = None
     judge_error: str | None = None
+    app_status: AppStatus = "none"
 
 
 @dataclass(frozen=True)
@@ -286,6 +287,7 @@ class Repository:
             verdict_key=row["verdict_key"],
             rank_score=row["rank_score"],
             judge_error=row["judge_error"],
+            app_status=row["app_status"],
         )
 
     # --- Juez y caché de veredictos ------------------------------------------------------
@@ -349,6 +351,29 @@ class Repository:
             "UPDATE jobs SET stage = ?, verdict_key = ?, rank_score = ?, judge_error = ? WHERE id = ?",
             (stage, verdict_key, rank, error, job_id),
         )
+
+    def set_app_status(self, job_id: str, status: AppStatus) -> None:
+        self.conn.execute("UPDATE jobs SET app_status = ? WHERE id = ?", (status, job_id))
+
+    def job_sources(self, job_id: str) -> list[tuple[str, str, datetime]]:
+        """(portal, URL, visto) de cada sitio donde apareció la oferta, del primero al último."""
+        rows = self.conn.execute(
+            "SELECT site, url, seen_at FROM job_sources WHERE job_id = ? ORDER BY seen_at", (job_id,)
+        ).fetchall()
+        return [(r["site"], r["url"], _dt(r["seen_at"])) for r in rows]
+
+    def verdict_history(self, job_id: str, limit: int = 5) -> list[StoredVerdict]:
+        rows = self.conn.execute(
+            "SELECT cache_key FROM verdicts WHERE job_id = ? ORDER BY created_at DESC LIMIT ?",
+            (job_id, limit),
+        ).fetchall()
+        return [v for r in rows if (v := self.cached_verdict(r["cache_key"])) is not None]
+
+    def recent_runs(self, limit: int = 10) -> list[Run]:
+        rows = self.conn.execute(
+            "SELECT id FROM runs ORDER BY started_at DESC, rowid DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [run for r in rows if (run := self.get_run(r["id"])) is not None]
 
     def reset_failed(self) -> int:
         cur = self.conn.execute(

@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 import hunter.__main__ as cli
+from hunter import services
 from hunter.config import get_settings
 from tests.fakes import FakeProvider, verdict_payload
 from tests.test_sources import FakeSource
@@ -13,6 +14,7 @@ from tests.test_sources import FakeSource
 def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_raw) -> Path:
     """CLI apuntando a un directorio temporal, con fuentes falsas (sin red)."""
     monkeypatch.setattr(cli, "HUNTER_ROOT", tmp_path)
+    monkeypatch.setattr(services, "HUNTER_ROOT", tmp_path)
     monkeypatch.setattr(cli, "ENV_FILE", tmp_path / ".env")
     monkeypatch.setenv("HUNTER_DB_PATH", str(tmp_path / "data" / "hunter.db"))
     monkeypatch.setenv("HUNTER_RETENTION_DAYS", "90")
@@ -30,7 +32,7 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_raw) -> Path:
         ),
     ]
     monkeypatch.setattr(
-        cli, "build_sources", lambda rules, client, pause: [FakeSource("indeed", "ok", offers)]
+        services, "build_sources", lambda rules, client, pause: [FakeSource("indeed", "ok", offers)]
     )
     yield tmp_path
     get_settings.cache_clear()
@@ -91,7 +93,7 @@ def test_judge_commands(
     provider = FakeProvider(
         verdict_payload(red_flags=[{"text": "Cita inventada", "evidence": "salario de 90.000 euros al año"}])
     )
-    monkeypatch.setattr(cli, "GroqProvider", lambda **kwargs: provider)
+    monkeypatch.setattr(services, "GroqProvider", lambda **kwargs: provider)
     cli.main(["init"])
     cli.main(["run"])
     out = capsys.readouterr().out

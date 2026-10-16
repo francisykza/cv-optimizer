@@ -19,6 +19,13 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    # --- API local (Fase 3) ---
+    hunter_host: str = "127.0.0.1"
+    hunter_port: int = 8001
+    hunter_token: SecretStr | None = None  # lo genera `python -m hunter init`
+    # Orígenes del frontend que pueden llamar a la API (separados por comas).
+    hunter_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
     # --- Persistencia ---
     hunter_db_path: Path = Path("data/hunter.db")
     hunter_retention_days: int = 90
@@ -51,7 +58,11 @@ class Settings(BaseSettings):
     hunter_tokens_per_minute: int = 6000
     jina_api_key: SecretStr | None = None
 
-    @field_validator("groq_api_key", "jina_api_key", mode="before")
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.hunter_allowed_origins.split(",") if o.strip()]
+
+    @field_validator("groq_api_key", "jina_api_key", "hunter_token", mode="before")
     @classmethod
     def _strip_api_key(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value

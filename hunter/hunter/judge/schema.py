@@ -193,4 +193,8 @@ def finalize(raw: LLMVerdict, description: str) -> JobVerdict:
 
 
 def rank_score(match_score: int, prescore: int) -> float:
-    return round(0.8 * match_score + 0.2 * prescore, 1)
+    """Manda la nota del juez; el pre-score (palabras clave) solo desempata.
+
+    Antes era 0,8·nota + 0,2·pre-score, y en el primer run real un "quizá" de 60 con pre-score 100
+    quedaba por encima de tres "aplicar" de 78."""
+    return round(match_score + prescore / 1000, 3)

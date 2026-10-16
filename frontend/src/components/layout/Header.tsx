@@ -1,17 +1,33 @@
 import type { ServerState } from '../../hooks/useServerStatus'
 import { cn } from '../../lib/format'
+import type { Route } from '../../lib/route'
 import { Logo } from '../ui/Logo'
 
 const STATUS: Record<ServerState, { label: string; dot: string; text: string }> = {
   checking: { label: 'Conectando…', dot: 'bg-slate-400 animate-pulse', text: 'text-slate-500' },
-  waking: { label: 'Despertando servidor…', dot: 'bg-amber-500 animate-pulse', text: 'text-amber-700 dark:text-amber-400' },
+  waking: {
+    label: 'Despertando servidor…',
+    dot: 'bg-amber-500 animate-pulse',
+    text: 'text-amber-700 dark:text-amber-400',
+  },
   online: { label: 'Servidor operativo', dot: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-400' },
   offline: { label: 'Servidor no disponible', dot: 'bg-rose-500', text: 'text-rose-700 dark:text-rose-400' },
 }
 
 const REPO_URL = import.meta.env.VITE_REPO_URL as string | undefined
 
-export function Header({ serverState }: { serverState: ServerState }) {
+interface HeaderProps {
+  serverState: ServerState
+  /** Si se pasa, se muestran las pestañas Optimizar CV / Buscador (solo con el Job Hunter activo). */
+  route?: Route
+}
+
+const NAV: { route: Route; label: string; href: string }[] = [
+  { route: 'optimizar', label: 'Optimizar CV', href: '#/optimizar' },
+  { route: 'buscar', label: 'Buscador', href: '#/buscar' },
+]
+
+export function Header({ serverState, route }: HeaderProps) {
   const status = STATUS[serverState]
 
   return (
@@ -21,8 +37,28 @@ export function Header({ serverState }: { serverState: ServerState }) {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <a href="#" className="focus-ring flex items-center gap-2.5 rounded-lg" aria-label="CV-Optimizer, inicio">
           <Logo className="size-8" />
-          <span className="text-[15px] font-semibold tracking-tight">CV-Optimizer</span>
+          <span className="hidden text-[15px] font-semibold tracking-tight sm:inline">CV-Optimizer</span>
         </a>
+
+        {route && (
+          <nav aria-label="Secciones" className="mr-auto ml-4 flex gap-1 sm:ml-8">
+            {NAV.map((item) => (
+              <a
+                key={item.route}
+                href={item.href}
+                aria-current={route === item.route ? 'page' : undefined}
+                className={cn(
+                  'focus-ring rounded-md px-2.5 py-1.5 text-sm font-medium transition sm:px-3',
+                  route === item.route
+                    ? 'bg-ink text-white dark:bg-white dark:text-slate-900'
+                    : 'text-slate-600 hover:bg-white hover:text-ink dark:text-slate-300 dark:hover:bg-slate-900',
+                )}
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+        )}
 
         <div className="flex items-center gap-3">
           <div
