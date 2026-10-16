@@ -187,7 +187,7 @@ export function HeroDemo() {
   }
 
   return (
-    <figure aria-label="Ejemplo de CV optimizado" className="mx-auto w-full max-w-md lg:max-w-none">
+    <figure aria-label="Ejemplo de CV optimizado" data-field-anchor className="mx-auto w-full max-w-md lg:max-w-none">
       <div
         ref={tiltRef}
         onPointerMove={onPointerMove}
@@ -244,7 +244,7 @@ export function HeroDemo() {
       </div>
 
       <figcaption className="mt-6 flex flex-wrap items-start justify-between gap-4">
-        <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+        <ul data-field-avoid className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
           {LEGEND.map(({ ink, color, text }) => (
             <li key={ink} ref={(el) => void (legendRefs.current[ink] = el)} className="flex items-center gap-3">
               <span className={cn('h-3 w-6 shrink-0 rounded-[2px]', color)} aria-hidden />

@@ -57,4 +57,12 @@ describe('App y el Buscador', () => {
     expect(nav).toHaveTextContent('Buscador')
     expect(screen.getByRole('link', { name: 'Optimizar CV' })).toHaveAttribute('aria-current', 'page')
   })
+
+  it('la portada monta el campo de trazos sin canvas real (jsdom) y queda oculto a lectores de pantalla', async () => {
+    render(<App />)
+    await screen.findByLabelText('Texto de la oferta de empleo')
+    const canvas = document.querySelector('canvas')
+    expect(canvas).toHaveAttribute('aria-hidden', 'true')
+    expect(canvas).toHaveClass('pointer-events-none')
+  })
 })
