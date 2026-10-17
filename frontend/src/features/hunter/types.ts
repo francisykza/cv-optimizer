@@ -6,7 +6,8 @@ export type AppStatus = 'none' | 'saved' | 'sent_to_optimizer' | 'applied' | 'di
 export type JobsView = 'ranked' | 'pending' | 'discarded' | 'failed' | 'all'
 export type Verdict = 'apply' | 'maybe' | 'skip'
 export type RunStatus = 'running' | 'ok' | 'partial' | 'failed'
-export type RunMode = 'full' | 'ingest_only' | 'judge_only'
+/** rejudge: vuelve a juzgar las ofertas cuya nota es de un perfil anterior (SPEC §19.3). */
+export type RunMode = 'full' | 'ingest_only' | 'judge_only' | 'rejudge'
 
 export interface Flag {
   text: string
@@ -256,4 +257,41 @@ export interface ApplicationsPage {
   items: ApplicationItem[]
   total: number
   stats: ApplicationStats
+}
+
+// --- Tu perfil (SPEC §19) -------------------------------------------------------------------------
+
+/** Notas de los últimos `days` días que son de un perfil anterior y lo que costaría ponerlas al día. */
+export interface OutdatedVerdicts {
+  count: number
+  /** Ya se juzgaron con este perfil: vuelven de la caché sin gastar tokens. */
+  from_cache: number
+  days: number
+  est_tokens: number
+  est_minutes: number
+  /** null: sin tope diario de tokens. */
+  tokens_left_today: number | null
+}
+
+export interface Profile {
+  text: string
+  /** Huella del archivo leído: al guardar se comprueba que nadie lo ha cambiado fuera de la web. */
+  sha256: string
+  chars: number
+  max_chars: number
+  /** Lo que buscará el pre-score en las ofertas. */
+  terms: string[]
+  is_example: boolean
+  exists: boolean
+  updated_at: string | null
+  previous_text: string | null
+  outdated: OutdatedVerdicts
+}
+
+/** Borrador sacado del CV en PDF: no se guarda hasta que el usuario lo revisa. */
+export interface ProfileDraft {
+  text: string
+  chars: number
+  sections: string[]
+  warnings: string[]
 }

@@ -119,3 +119,27 @@ def test_judge_only_requires_a_key(isolated: Path) -> None:
     cli.main(["init"])
     with pytest.raises(SystemExit, match="GROQ_API_KEY"):
         cli.main(["run", "--mode", "judge_only"])
+    with pytest.raises(SystemExit, match="GROQ_API_KEY"):
+        cli.main(["run", "--mode", "rejudge"])
+
+
+def test_rejudge_after_changing_the_profile(
+    isolated: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_fake_key_for_tests_0123456789")
+    get_settings.cache_clear()
+    provider = FakeProvider(verdict_payload())
+    monkeypatch.setattr(services, "GroqProvider", lambda **kwargs: provider)
+    cli.main(["init"])
+    cli.main(["run"])
+    assert len(provider.requests) == 2
+    capsys.readouterr()
+
+    cli.main(["run", "--mode", "rejudge"])  # el perfil no ha cambiado: nada que volver a juzgar
+    out = capsys.readouterr().out
+    assert "Juez: 0 juzgadas" in out and "Leídas" not in out and len(provider.requests) == 2
+
+    profile_md = isolated / "data" / "profile.md"
+    profile_md.write_text(profile_md.read_text(encoding="utf-8") + "\n- También Rust\n", encoding="utf-8")
+    cli.main(["run", "--mode", "rejudge"])
+    assert "Juez: 2 juzgadas (0 desde caché)" in capsys.readouterr().out and len(provider.requests) == 4

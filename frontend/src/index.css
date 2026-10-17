@@ -255,6 +255,18 @@
   .ficha-dismissed {
     @apply opacity-55;
   }
+  /* Tu perfil: hoja rayada con el mismo azul que las fichas. Un renglón cada 28 px (leading-7) que se
+     desplaza con el texto, para que se escriba siempre sobre la línea. */
+  .renglones {
+    background-image: repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent 27px,
+      rgb(39 71 217 / 0.09) 27px,
+      rgb(39 71 217 / 0.09) 28px
+    );
+    background-attachment: local;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

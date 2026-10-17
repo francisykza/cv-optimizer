@@ -4,8 +4,8 @@
 |---|---|
 | **Proyecto** | CV-Optimizer · módulo **Job Hunter** (buscador y filtrador inverso de empleo con IA) |
 | **Tipo de documento** | Especificación técnica (SDD del módulo) |
-| **Versión** | 0.4.0 (Fases 1 a 4 implementadas) |
-| **Fecha** | 2026-10-16 |
+| **Versión** | 0.5.0 (Fases 1 a 4 implementadas y perfil editable desde la web) |
+| **Fecha** | 2026-10-17 |
 | **Estado** | Aprobado para implementar la Fase 1 |
 | **Autor** | Francisco Muñoz Dorado |
 | **Relación** | Extiende el [SDD de CV-Optimizer](../SDD.md) (v1.8.0, [ADR-011](../SDD.md#adr-011-job-hunter-local-con-estado-y-juez-ia-solo-para-ranking)) |
@@ -19,6 +19,7 @@
 | 0.2.0 | 2026-10-15 | Fase 2 (juez IA): `LLMVerdict` (lo que se pide) frente a `JobVerdict` (lo que se guarda) con `finalize()`; esquema estricto sin límites de longitud y vuelta a `json_mode` si Groq lo rechaza; citas de ≥ 12 caracteres; juez secuencial; latido de 10 min; caché por `verdict_key` (migración 002); CLI `show`, `rejudge`, `run --retry-failed/--judge-limit`; golden set de 40 ofertas y test live. Run real (16/10/2026): 19/19 ofertas juzgadas con gpt-oss-120b sin 429 ni reparaciones (62.713 tokens), repetición 100 % desde caché (0 tokens), golden live OK con 120b y 20b. Una oferta "USA, remoto" que exigía autorización de trabajo en EE. UU. sacó 78: se amplía `LOC_REMOTE_SCOPE` ("authorization to work in", "work permit for") y el prompt pasa a **v2** con la sección BLOQUEOS (tope de 30 y "skip"); `rules import` re-evalúa también las ya juzgadas. |
 | 0.3.0 | 2026-10-16 | Fase 3: API local (FastAPI, `python -m hunter serve`) con token, CORS y permiso de red local de Chrome (`allow_private_network` de Starlette); vista Buscador (fichas de cartulina, nota del corrector rodeada a mano, descartadas en versión compacta, editor de Reglas de Oro con simulación); puente por `sessionStorage`; `scripts/install_task.ps1`. Cambios respecto al borrador: el handoff es `POST` (marca la oferta como enviada) y `rejudge` responde en el momento con la oferta actualizada. Del run real: el ranking ordena por la nota del juez y el pre-score solo desempata (migración 003), porque un "quizá" de 60 con pre-score 100 quedaba por encima de tres "aplicar" de 78. |
 | 0.4.0 | 2026-10-16 | Fase 4 (§18), a partir del uso real: buscar exigía unos 8 pasos, desde el Optimizador no se podía volver a la oferta y no había seguimiento de candidaturas. Acceso directo del escritorio (`python -m hunter open`) que arranca la API sin ventana, lanza una búsqueda si la última tiene más de 12 h y abre la web conectada con un código de un solo uso; apagado por inactividad y botón "Apagar"; progreso del juez ("5 de 14") y aviso de ofertas nuevas; enlace a la oferta original en el Optimizador; **candidaturas** con la compatibilidad del CV enviado, historial de estados, resumen por tramos de compatibilidad y exportación a Excel (migración 004); datos en `%LOCALAPPDATA%` (fuera de OneDrive); cabecera Host validada; `GET /api/v1/status` en el backend porque EasyPrivacy bloquea `onrender.com/health`. |
+| 0.5.0 | 2026-10-17 | Tu perfil desde la web (§19): `GET/PUT /api/v1/profile` con escritura atómica, copia de la versión anterior, control de cambios hechos a mano y límite de 4000 caracteres (lo que lee el juez); solo un `.md` dentro de la carpeta de datos. Detección de notas de un perfil anterior por su clave de caché, modo de run `rejudge` ("Volver a juzgarlas", con estimación de tokens y minutos) y recuperación gratis desde la caché al volver a un perfil anterior; el pre-score se recalcula al guardar. Borrador sin IA desde el CV en PDF (`POST /api/v1/profile/draft`, extractor del backend, `pypdf`). ADR-013 del SDD. |
 
 ---
 
@@ -42,6 +43,7 @@
 16. [Plan de implementación en 3 fases](#16-plan-de-implementación-en-3-fases)
 17. [Riesgos y mitigaciones](#17-riesgos-y-mitigaciones)
 18. [Fase 4: del ranking a la candidatura](#18-fase-4-del-ranking-a-la-candidatura)
+19. [Tu perfil desde la web](#19-tu-perfil-desde-la-web)
 
 ---
 
@@ -577,7 +579,7 @@ Cada patrón tiene una tabla de casos en `tests/test_experience.py` (positivos, 
 `prescore` 0–100 = cobertura de los términos del perfil (`required_any.terms` + skills extraídas de
 `data/profile.md`) en la oferta, con `contains()` de `app.services.match_scorer`, más un pequeño bonus
 por modalidad preferida y frescura. Sirve para **ordenar la cola del juez** (las mejores primero) y como
-desempate. No se muestra como "score" principal.
+desempate. No se muestra como "score" principal. Al guardar el perfil desde la web se recalcula (§19.2).
 
 ---
 
@@ -670,6 +672,7 @@ model_family = "gpt-oss"   (120b y 20b comparten caché; el modelo real queda en
 - Las ofertas duplicadas (§6.3) nunca llegan al juez; una oferta que reaparece un día después con otra
   URL reutiliza el veredicto existente: **0 tokens**.
 - `POST /api/v1/jobs/{id}/rejudge` fuerza una evaluación nueva (ignora la caché, respeta el presupuesto).
+- Una oferta juzgada cuya `verdict_key` no coincide con la que tendría hoy tiene una nota "de un perfil anterior"; el modo `rejudge` la pone al día (§19.3).
 
 ---
 
@@ -677,7 +680,7 @@ model_family = "gpt-oss"   (120b y 20b comparten caché; el modelo real queda en
 
 Base: `http://127.0.0.1:8001`. Prefijo `/api/v1` (como el backend). Todas las rutas salvo `/health` y
 `POST /api/v1/pair` exigen la cabecera `X-Hunter-Token` (§11). Las rutas de la Fase 4 (emparejado,
-candidaturas y apagado) están en §18. Errores con el mismo formato que el backend
+candidaturas y apagado) están en §18 y las del perfil, en §19. Errores con el mismo formato que el backend
 (`ErrorResponse` de `app.schemas.optimize`):
 
 ```json
@@ -905,6 +908,7 @@ No cambia nada en `POST /api/v1/optimize` ni en `useOptimize`.
 - La cabecera `Host` se valida (`127.0.0.1` y `localhost`): una web que apunte su dominio a `127.0.0.1`
   (DNS rebinding) no llega a la API.
 - El navegador recibe el token con un código de un solo uso del lanzador (§18.2), nunca en la URL.
+- La API solo lee o escribe el perfil si es un `.md` dentro de la carpeta de datos (`judge.profile_file` admite rutas absolutas). El CV de un borrador se lee en memoria y no se guarda (§19.4).
 - La clave de Groq va en `hunter/.env` (gitignored) como `SecretStr`; no viaja al navegador.
 - El texto de las ofertas es **no confiable**: delimitado y escapado en el prompt; en la UI se renderiza
   como texto plano (sin `dangerouslySetInnerHTML`; si se usa Markdown, con `rehype-sanitize` como hoy).
@@ -973,6 +977,8 @@ cv-optimizer/
 │   │   ├── launcher.py            # Fase 4: lo que hace el doble clic (`open`)
 │   │   ├── pairing.py             # Fase 4: códigos de un solo uso
 │   │   ├── applications.py        # Fase 4: resumen, aviso "sin respuesta" y CSV de candidaturas
+│   │   ├── profile.py             # §19: leer y guardar el perfil, notas de un perfil anterior
+│   │   ├── cv_draft.py            # §19: borrador del perfil desde el CV en PDF
 │   │   ├── config.py              # Settings (pydantic-settings)
 │   │   ├── models.py              # §4.1
 │   │   ├── rules/
@@ -1052,6 +1058,7 @@ Los 204 tests existentes deben seguir en verde sin modificarlos; se añaden test
 | `test_applications.py` | Fase 4: alta idempotente, historial de estados, borrado, resumen por tramos, CSV (BOM, `;`, sin fórmulas) y API. |
 | `test_pairing.py` | Fase 4: código de un solo uso y caducado, solo su hash en la BD, origen permitido, cabecera Host, "Apagar" e inactividad. |
 | `test_launcher.py` | Fase 4: cuándo toca buscar (sin bloquearse por un run huérfano), doble clic con la API encendida o apagada, errores visibles, `pythonw.exe`, carpeta de datos y migración concurrente. |
+| `test_profile.py` | §19: escritura atómica, conflicto, límite, ruta fuera de la carpeta, notas viejas, pre-score, modo `rejudge` (conserva la nota si falla), recuperación desde la caché, API y borrador desde PDF. |
 | `test_golden.py` | Golden set: la guillotina **no descarta ninguna** oferta etiquetada `keep` (recall 100 %) y descarta ≥ 80 % de las `discard`. Juez real marcado `@pytest.mark.live` (fuera de CI). |
 
 ### 15.2 Frontend (vitest)
@@ -1229,3 +1236,51 @@ La lista EasyPrivacy (uBlock Origin, AdGuard, Adblock Plus…) incluye `||onrend
 bloqueador, el ping de calentamiento fallaba siempre y el Optimizador dejaba el botón desactivado 2 minutos
 ("Despertando el servidor…"). El backend responde lo mismo en `GET /api/v1/status` y el frontend usa esa
 ruta; `/health` se queda para el health check de Render.
+
+---
+
+## 19. Tu perfil desde la web
+
+### 19.1 Por qué
+El juez puntúa cada oferta contra `profile.md`, que había que abrir a mano en `%LOCALAPPDATA%` y seguía siendo
+el de ejemplo: todas las notas eran para un candidato ficticio. Ahora se ve y se edita en la pestaña **Reglas de
+Oro → Tu perfil**, como una hoja rayada en el tablero de pinza.
+
+### 19.2 Leer y guardar
+| Ruta | Respuesta |
+|---|---|
+| `GET /api/v1/profile` | `{ text, sha256, chars, max_chars, terms, is_example, exists, updated_at, previous_text, outdated }`. `terms`: lo que buscará el pre-score; `outdated`: §19.3. |
+| `PUT /api/v1/profile` | `{ text, base_sha256 }` → lo mismo que el GET. `422 PROFILE_INVALID` (vacío o más de 4000 caracteres), `409 PROFILE_CHANGED` (el archivo cambió fuera de la web desde que se leyó: la web pregunta con cuál quedarse), `409 PROFILE_PATH_NOT_ALLOWED`. |
+
+- El texto se limpia (saltos de línea de Unix, sin caracteres de control ni espacios finales) y se escribe en un
+  temporal de la misma carpeta, con `fsync` y `os.replace`. La versión anterior queda en `profile.anterior.md`
+  ("Recuperar la versión anterior" la lleva al editor sin guardarla).
+- El límite de 4000 caracteres es `PROFILE_MAX_CHARS`, lo que lee el juez: lo que se guarda es lo que se juzga.
+- Al guardar, las ofertas que siguen en juego recalculan su pre-score con los términos nuevos (a la fecha en que
+  llegaron, 0 tokens) y las que ya se juzgaron con este mismo perfil recuperan esa nota de la caché.
+- Nunca se registra el texto en los logs. Lo escrito sin guardar sobrevive a cambiar de pestaña
+  (`sessionStorage['cvopt:profile-unsaved']`).
+
+### 19.3 Las notas de un perfil anterior
+- Una oferta juzgada de los últimos 7 días (sin "No me interesa" ni las ya inscritas) cuya `verdict_key` no es la
+  que tendría hoy se juzgó con otro perfil, otras prioridades u otro prompt. `outdated` dice cuántas son, cuántas
+  salen gratis de la caché, los tokens estimados (media real de los últimos veredictos), los minutos y lo que queda
+  del presupuesto diario.
+- **No se vuelven a juzgar solas.** La web ofrece "Volver a juzgarlas" con esa estimación; "Ahora no" las deja como
+  están. El botón lanza `POST /api/v1/runs { mode: "rejudge" }` (también `python -m hunter run --mode rejudge`):
+  sin portales, juzga las mejor colocadas primero, cada una conserva su nota hasta que llega la nueva y un fallo no
+  se la quita. Si se agota la cuota, las que faltan siguen contando como desactualizadas.
+- "Para ti" avisa si las notas son del perfil de ejemplo o de uno anterior. Un run `rejudge` no cuenta como búsqueda
+  para el lanzador.
+
+### 19.4 Borrador desde el CV
+`POST /api/v1/profile/draft` con el PDF como cuerpo `application/pdf` (máx. 5 MB y 5 páginas, como el Optimizador)
+→ `{ text, chars, sections, warnings }`. No guarda nada.
+- Usa `PdfExtractor` del backend en memoria. Reconoce los títulos del CV ("EXPERIENCIA PROFESIONAL", "Skills &
+  tools"…) y copia su texto en Resumen, Habilidades técnicas, Cualidades, Idiomas, Experiencia relevante, Proyectos y
+  Formación. Sin LLM: nada inventado y 0 tokens.
+- Deja fuera la cabecera (nombre y contacto), "Datos personales", correos, teléfonos y enlaces: el perfil viaja a Groq
+  con cada oferta. Si no cabe en 3700 caracteres recorta lo más largo y lo avisa.
+- La web puede usar el CV que recuerda el navegador (`cvStore`) o un PDF elegido. Errores del backend:
+  `INVALID_PDF`, `PDF_NO_TEXT`, `TOO_MANY_PAGES`, `FILE_TOO_LARGE`, `UNSUPPORTED_MEDIA_TYPE`; sin `pypdf`,
+  `503 PDF_SUPPORT_MISSING` (el resto de la API sigue funcionando).

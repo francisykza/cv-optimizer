@@ -6,7 +6,7 @@ import { consumeHandoff } from '../../lib/handoff'
 import { outbox } from './applications'
 import { HunterError, hunterApi, normalizeJob, tokenStore } from './hunterClient'
 import HunterView from './HunterView'
-import type { ApplicationItem, ApplicationsPage, JobItem, Run } from './types'
+import type { ApplicationItem, ApplicationsPage, JobItem, Profile, Run } from './types'
 
 const LONG = 'Junior AI Engineer — Acme (Málaga, híbrido)\n\n' + 'Python, LLM y RAG con mentoría semanal. '.repeat(8)
 
@@ -53,10 +53,28 @@ const health = {
   last_run: null,
 } as const
 
+function profile(overrides: Partial<Profile> = {}): Profile {
+  return {
+    text: '## Habilidades técnicas\n- Python, LLM\n',
+    sha256: 'a'.repeat(64),
+    chars: 36,
+    max_chars: 4000,
+    terms: ['Python', 'LLM'],
+    is_example: false,
+    exists: true,
+    updated_at: '2026-10-16T20:00:00+00:00',
+    previous_text: null,
+    outdated: { count: 0, from_cache: 0, days: 7, est_tokens: 0, est_minutes: 0, tokens_left_today: 150_000 },
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   vi.spyOn(hunterApi, 'health').mockResolvedValue(health)
   vi.spyOn(hunterApi, 'runs').mockResolvedValue([])
   vi.spyOn(hunterApi, 'jobs').mockResolvedValue({ items: [job()], total: 1, next_cursor: null })
+  vi.spyOn(hunterApi, 'profile').mockResolvedValue(profile())
+  vi.spyOn(hunterApi, 'rules').mockRejectedValue(new HunterError('OFFLINE', 'sin reglas en este test', 0))
 })
 
 afterEach(() => {
@@ -373,6 +391,74 @@ describe('HunterView', () => {
     await user.click(await screen.findByRole('tab', { name: /Descartadas/ }))
     expect(await screen.findByText('Nivel excluido en el título: «senior»')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Enviar al Optimizador' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Tu perfil en el Buscador', () => {
+  it('"Para ti" avisa si las notas son del perfil de ejemplo y lleva a escribir el tuyo', async () => {
+    tokenStore.set('t', false)
+    vi.mocked(hunterApi.profile).mockResolvedValue(profile({ is_example: true }))
+    const user = userEvent.setup()
+    render(<HunterView />)
+    expect(await screen.findByText('Estas notas son para el perfil de ejemplo, no para ti.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Escribir mi perfil' }))
+    expect(screen.getByRole('tab', { name: 'Reglas de Oro' })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByRole('heading', { name: 'Tu perfil' })).toBeInTheDocument()
+    expect(await screen.findByText(/Todavía es el perfil de ejemplo/)).toBeInTheDocument()
+  })
+
+  it('"Para ti" avisa de las notas de un perfil anterior', async () => {
+    tokenStore.set('t', false)
+    vi.mocked(hunterApi.profile).mockResolvedValue(
+      profile({
+        outdated: { count: 3, from_cache: 0, days: 7, est_tokens: 9900, est_minutes: 3, tokens_left_today: 1 },
+      }),
+    )
+    render(<HunterView />)
+    expect(await screen.findByText('3 notas son de un perfil anterior.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Revisarlas' })).toBeInTheDocument()
+  })
+
+  it('"Volver a juzgarlas" se sigue en el panel de búsqueda', async () => {
+    tokenStore.set('t', false)
+    vi.mocked(hunterApi.profile).mockResolvedValue(
+      profile({
+        outdated: { count: 3, from_cache: 0, days: 7, est_tokens: 9900, est_minutes: 3, tokens_left_today: 90_000 },
+      }),
+    )
+    const rejudging: Run = {
+      id: 'run-r',
+      trigger: 'api',
+      mode: 'rejudge',
+      status: 'running',
+      started_at: '2026-10-16T21:00:00+00:00',
+      finished_at: null,
+      rules_version: 'x',
+      counts: {
+        fetched: 0,
+        new: 0,
+        duplicates: 0,
+        discarded: 0,
+        pending_judge: 0,
+        judged: 1,
+        judge_failed: 0,
+        cache_hits: 0,
+        judge_queue: 3,
+      },
+      tokens_used: 3300,
+      budget_exhausted: false,
+      sources: [],
+      error: null,
+    }
+    vi.spyOn(hunterApi, 'startRun').mockResolvedValue({ run_id: 'run-r', status: 'running' })
+    vi.spyOn(hunterApi, 'run').mockResolvedValue(rejudging)
+    const user = userEvent.setup()
+    render(<HunterView />)
+    await user.click(await screen.findByRole('tab', { name: 'Reglas de Oro' }))
+    await user.click(await screen.findByRole('button', { name: 'Volver a juzgarlas' }))
+    expect(hunterApi.startRun).toHaveBeenCalledWith('t', 'rejudge')
+    expect(await screen.findByText('La IA está volviendo a puntuar con tu perfil: 1 de 3.')).toBeInTheDocument()
+    expect(hunterApi.run).toHaveBeenCalledWith('t', 'run-r')
   })
 })
 

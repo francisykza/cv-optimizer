@@ -102,7 +102,8 @@ class RunCounts(BaseModel):
 
 
 RunStatus = Literal["running", "ok", "partial", "failed"]
-RunMode = Literal["full", "ingest_only", "judge_only"]
+# rejudge: vuelve a juzgar las ofertas cuya nota es de un perfil anterior (SPEC §19.3).
+RunMode = Literal["full", "ingest_only", "judge_only", "rejudge"]
 RunTrigger = Literal["scheduler", "api", "cli"]
 
 

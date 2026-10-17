@@ -255,3 +255,46 @@ class ApplicationsPage(BaseModel):
 
 class ShutdownAccepted(BaseModel):
     status: Literal["stopping"] = "stopping"
+
+
+# --- Tu perfil (SPEC §19) ------------------------------------------------------------------------
+
+
+class OutdatedVerdicts(BaseModel):
+    """Notas de los últimos `days` días que son de un perfil anterior (sin "No me interesa" ni las ya
+    inscritas) y lo que costaría volver a juzgarlas."""
+
+    count: int
+    from_cache: int  # se recuperan de la caché sin gastar tokens
+    days: int
+    est_tokens: int
+    est_minutes: int
+    tokens_left_today: int | None  # None: sin tope diario
+
+
+class ProfileResponse(BaseModel):
+    text: str
+    sha256: str  # se devuelve al guardar: si el archivo cambió fuera de la web, no se pisa
+    chars: int
+    max_chars: int
+    terms: list[str] = Field(default_factory=list)  # lo que buscará el pre-score
+    is_example: bool
+    exists: bool
+    updated_at: datetime | None
+    previous_text: str | None  # la versión anterior, para recuperarla
+    outdated: OutdatedVerdicts
+
+
+class ProfileUpdate(BaseModel):
+    # Tope de la petición; el límite real (lo que lee el juez) se comprueba al limpiar el texto.
+    text: str = Field(max_length=20_000)
+    base_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class ProfileDraft(BaseModel):
+    """Borrador sacado del CV: no se guarda hasta que el usuario lo revisa y pulsa Guardar."""
+
+    text: str
+    chars: int
+    sections: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)

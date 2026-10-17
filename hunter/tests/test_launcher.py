@@ -50,6 +50,7 @@ def test_search_is_due_when_never_searched_or_old(repo: Repository) -> None:
     _run(repo, hours_ago=20)
     assert launcher.search_is_due(repo, hours=12, now=now)
     _run(repo, hours_ago=2, mode="judge_only")  # solo juez: no cuenta como búsqueda en los portales
+    _run(repo, hours_ago=1, mode="rejudge")  # volver a juzgar con el perfil nuevo, tampoco
     assert launcher.search_is_due(repo, hours=12, now=now)
     _run(repo, hours_ago=3)
     assert not launcher.search_is_due(repo, hours=12, now=now)

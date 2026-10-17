@@ -4,6 +4,7 @@ Así `python -m hunter run` (Programador de tareas) y `POST /api/v1/runs` (vista
 exactamente el mismo código.
 """
 
+from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 
@@ -11,7 +12,7 @@ import httpx
 from app.services.llm.groq import GroqProvider
 
 from hunter.config import Settings
-from hunter.judge.judge import Judge, JudgeConfig, JudgeContext
+from hunter.judge.judge import Judge, JudgeConfig, JudgeContext, model_family, verdict_key
 from hunter.judge.limiter import AdaptiveLimiter, BudgetGuard
 from hunter.models import Run, RunMode, RunTrigger
 from hunter.pipeline.prescore import load_profile_terms
@@ -20,7 +21,7 @@ from hunter.rules.schema import GoldenRules
 from hunter.sources import breaker
 from hunter.sources.registry import build_sources
 from hunter.store.db import connect
-from hunter.store.repository import Repository, utcnow
+from hunter.store.repository import Repository, StoredJob, utcnow
 
 
 class ProfileMissingError(Exception):
@@ -63,6 +64,16 @@ def build_pipeline(repo: Repository, rules: GoldenRules, settings: Settings) -> 
             profile_terms=load_profile_terms(profile_path(rules, settings)),
         ),
     )
+
+
+def current_verdict_key(
+    rules: GoldenRules, settings: Settings, profile_text: str
+) -> Callable[[StoredJob], str]:
+    """La clave que tendría hoy el veredicto de cada oferta, con este perfil, las prioridades de las
+    reglas, el prompt y la familia de modelo actuales (la misma que calcula el juez)."""
+    context_hash = JudgeContext.from_rules(rules, profile_text).hash
+    family = model_family(settings.groq_model_primary)
+    return lambda job: verdict_key(job.desc_sha256, context_hash, family)
 
 
 def llm_client() -> httpx.AsyncClient:
@@ -116,11 +127,12 @@ async def execute_run(
     judge_limit: int | None = None,
     run_id: str | None = None,
 ) -> Run:
-    """Un run completo: fuentes (salvo judge_only), guillotina y juez (salvo ingest_only).
-    Lanza RunInProgressError si ya hay otro en marcha."""
+    """Un run: fuentes y guillotina (full e ingest_only) y juez (salvo ingest_only; en rejudge, solo
+    las notas de un perfil anterior). Lanza RunInProgressError si ya hay otro en marcha."""
     pipeline = build_pipeline(repo, rules, settings)
     async with llm_client() as client:
-        sources = build_sources(rules, client, settings.hunter_source_pause_s) if mode != "judge_only" else []
+        portals = mode in ("full", "ingest_only")
+        sources = build_sources(rules, client, settings.hunter_source_pause_s) if portals else []
         if only:
             sources = [s for s in sources if s.name in only]
         judge = build_judge(repo, rules, settings, client) if mode != "ingest_only" else None

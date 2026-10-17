@@ -103,7 +103,7 @@ def search_is_due(repo: Repository, hours: float, now: datetime) -> bool:
     if hours <= 0 or repo.live_run(STALE_RUN_AFTER):
         return False
     for run in repo.recent_runs(10):
-        if run.mode != "judge_only" and run.finished_at is not None:
+        if run.mode in ("full", "ingest_only") and run.finished_at is not None:
             return now - run.finished_at > timedelta(hours=hours)
     return True
 

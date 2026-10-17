@@ -14,6 +14,9 @@ import type {
   JobsPage,
   JobsView,
   JobVerdict,
+  OutdatedVerdicts,
+  Profile,
+  ProfileDraft,
   RulesResponse,
   RulesSaved,
   Run,
@@ -72,6 +75,8 @@ export const tokenStore = {
 interface RequestOptions {
   method?: string
   body?: unknown
+  /** Cuerpo tal cual (un PDF), con su tipo. */
+  file?: Blob
   token?: string
   signal?: AbortSignal
   timeoutMs?: number
@@ -79,20 +84,21 @@ interface RequestOptions {
 
 async function request<T>(
   path: string,
-  { method = 'GET', body, token, signal, timeoutMs = 15_000 }: RequestOptions = {},
+  { method = 'GET', body, file, token, signal, timeoutMs = 15_000 }: RequestOptions = {},
 ): Promise<T> {
   const timeout = AbortSignal.timeout(timeoutMs)
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
   const headers: Record<string, string> = {}
   if (token) headers['X-Hunter-Token'] = token
   if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (file) headers['Content-Type'] = file.type || 'application/pdf'
 
   let response: Response
   try {
     response = await fetch(`${HUNTER_URL}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: file ?? (body === undefined ? undefined : JSON.stringify(body)),
       signal: combined,
     })
   } catch {
@@ -138,6 +144,25 @@ export function normalizeJob(job: JobItem): JobItem {
 
 export function normalizeApplication<T extends ApplicationItem>(item: T): T {
   return { ...item, notes: item.notes ?? '', events: list<ApplicationEvent>(item.events) }
+}
+
+const NO_OUTDATED: OutdatedVerdicts = {
+  count: 0,
+  from_cache: 0,
+  days: 7,
+  est_tokens: 0,
+  est_minutes: 0,
+  tokens_left_today: null,
+}
+
+export function normalizeProfile(profile: Profile): Profile {
+  return {
+    ...profile,
+    text: profile.text ?? '',
+    terms: list<string>(profile.terms),
+    previous_text: profile.previous_text ?? null,
+    outdated: { ...NO_OUTDATED, ...(profile.outdated ?? {}) },
+  }
 }
 
 // --- Endpoints -----------------------------------------------------------------------------------
@@ -198,6 +223,25 @@ export const hunterApi = {
 
   saveRules: (token: string, rules: GoldenRules) =>
     request<RulesSaved>('/api/v1/rules', { method: 'PUT', token, body: { rules } }),
+
+  profile: async (token: string) => normalizeProfile(await request<Profile>('/api/v1/profile', { token })),
+
+  /** `baseSha256`: la huella del perfil que se editó. Si el archivo cambió fuera de la web: 409 PROFILE_CHANGED. */
+  saveProfile: async (token: string, text: string, baseSha256: string) =>
+    normalizeProfile(
+      await request<Profile>('/api/v1/profile', { method: 'PUT', token, body: { text, base_sha256: baseSha256 } }),
+    ),
+
+  /** Borrador del perfil a partir del CV en PDF: lo lee la API local, sin IA y sin guardar nada. */
+  profileDraft: async (token: string, pdf: Blob) => {
+    const draft = await request<ProfileDraft>('/api/v1/profile/draft', {
+      method: 'POST',
+      token,
+      file: pdf,
+      timeoutMs: 30_000,
+    })
+    return { ...draft, sections: list<string>(draft.sections), warnings: list<string>(draft.warnings) }
+  },
 
   /** Canjea el código de un solo uso del lanzador por el token (SPEC §18.2). */
   pair: (code: string) => request<{ token: string }>('/api/v1/pair', { method: 'POST', body: { code } }),

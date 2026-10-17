@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | CV-Optimizer |
 | **Tipo de documento** | System Design Document (SDD) |
-| **Versión** | 1.10.0 |
+| **Versión** | 1.11.0 |
 | **Fecha** | 2026-10-12 |
 | **Estado** | Aprobado para implementación del MVP |
 | **Autor** | Francisco Muñoz Dorado |
@@ -29,6 +29,7 @@
 | 1.8.0 | 2026-10-15 | Especificación del módulo Job Hunter (buscador inverso de empleo con IA) en [`hunter/SPEC.md`](hunter/SPEC.md); ADR-011. Sin cambios de código todavía. |
 | 1.9.0 | 2026-10-16 | Job Hunter completo (SPEC del hunter 0.3.0): motor determinista, juez IA en Groq, API local y vista "Buscador" (`#/buscar`, oculta por defecto en la web pública) con el botón "Enviar al Optimizador". El contrato de `/optimize` no cambia. |
 | 1.10.0 | 2026-10-16 | Job Hunter, Fase 4 (SPEC del hunter 0.4.0): acceso directo que arranca la API local y conecta la web sola, apagado por inactividad, enlace a la oferta original en el Optimizador y candidaturas con la compatibilidad del CV enviado (ADR-012). `GET /api/v1/status` para el indicador del servidor, porque EasyPrivacy bloquea `onrender.com/health` (§4.7). |
+| 1.11.0 | 2026-10-17 | Job Hunter, tu perfil desde la web (SPEC del hunter 0.5.0): ver y editar `profile.md` en la pestaña Reglas de Oro, borrador sin IA desde el CV en PDF, aviso de notas de un perfil anterior y botón "Volver a juzgarlas" con el coste estimado en tokens (ADR-013). |
 
 ---
 
@@ -1527,6 +1528,21 @@ docker compose up --build
   - (+) Un único sitio duradero, exportable a Excel, con la oferta tal y como estaba (los portales la borran) y el CV exacto enviado.
   - (+) ADR-001 intacto: el backend público sigue sin guardar nada.
   - (−) Verlas requiere la API local (un doble clic). Sin copia automática: la exportación a Excel es la copia de seguridad.
+
+### ADR-013: Tu perfil desde la web, sin re-juicios automáticos ni IA en el borrador
+
+- **Contexto:**
+  - El juez puntúa cada oferta contra `profile.md`, que había que editar a mano en la carpeta de datos (y seguía siendo el de ejemplo).
+  - El perfil forma parte de la clave de caché: cambiarlo deja viejas las notas ya puestas, y volver a juzgarlas cuesta ~3.300 tokens por oferta (21 ofertas ≈ 69.000, casi la mitad del presupuesto diario).
+  - Con la API, `judge.profile_file` (que admite rutas absolutas) se convertía en una forma de leer o escribir cualquier archivo.
+- **Decisión** (tomada con el autor):
+  - El perfil sigue siendo un Markdown en la carpeta de datos; la web lo lee y lo guarda (`GET/PUT /api/v1/profile`) con escritura atómica, copia de la versión anterior y control de cambios hechos a mano. Solo se admite un `.md` dentro de la carpeta de datos.
+  - Las notas viejas se detectan comparando la clave de cada veredicto con la que tendría hoy, sin guardar nada más. **No se vuelven a juzgar solas**: la web ofrece hacerlo con un botón y la estimación de tokens y minutos (modo de run `rejudge`); mientras, cada oferta conserva su nota. Volver a un perfil anterior recupera sus notas de la caché gratis.
+  - El borrador desde el CV en PDF es **determinista**: reconoce los apartados del CV, copia su texto sin el nombre ni los datos de contacto y cabe en lo que lee el juez. Sin LLM (ADR-005/ADR-010: nada inventado) y sin salir del equipo.
+- **Consecuencias:**
+  - (+) El autor edita su perfil sin abrir archivos y decide cuándo gasta tokens.
+  - (+) El perfil se sigue pudiendo editar a mano; la web no lo pisa sin preguntar.
+  - (−) El borrador depende de que el CV tenga títulos reconocibles; si no, devuelve el texto sin ordenar para hacerlo a mano. El hunter pasa a depender de `pypdf`.
 
 ---
 

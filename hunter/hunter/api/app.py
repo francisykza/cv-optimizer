@@ -1,4 +1,4 @@
-"""API local del Job Hunter (SPEC §8 y §18): `python -m hunter serve` → http://127.0.0.1:8001.
+"""API local del Job Hunter (SPEC §8, §18 y §19): `python -m hunter serve` → http://127.0.0.1:8001.
 
 - Solo escucha en 127.0.0.1 y exige la cabecera `X-Hunter-Token` (salvo /health y /api/v1/pair). Al
   ser una cabecera propia, el navegador hace preflight CORS: una web cualquiera no puede lanzar
@@ -6,6 +6,7 @@
 - El navegador recibe el token canjeando el código de un solo uso del lanzador (POST /api/v1/pair).
 - Los runs se lanzan en segundo plano dentro del mismo proceso y se consultan con GET /runs/{id}.
 - Arrancada por el lanzador, se apaga sola tras N minutos sin peticiones (`hunter.api.idle`).
+- El perfil se lee y se guarda desde la web (/profile); el CV en PDF de un borrador no sale del equipo.
 - Reutiliza el formato de errores, el request_id y el logging del backend del Optimizador.
 """
 
@@ -15,12 +16,14 @@ import secrets
 import uuid
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from datetime import timedelta
+from pathlib import Path
 from typing import Annotated
 
 import httpx
 from app.api.errors import register_exception_handlers
-from app.core.exceptions import AppError
+from app.core.exceptions import AppError, FileTooLargeError, InvalidPdfError, UnsupportedMediaTypeError
 from app.core.middleware import RequestContextMiddleware
 from app.services.job_url_extractor import extract_job_offer
 from fastapi import APIRouter, Depends, FastAPI, Header, Query, Request, Response
@@ -29,7 +32,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from hunter import __version__, applications, pairing, services
+from hunter import __version__, applications, pairing, profile, services
 from hunter.api import idle, views
 from hunter.api.schemas import (
     ApplicationDetail,
@@ -44,8 +47,12 @@ from hunter.api.schemas import (
     JobsPage,
     JobsView,
     LastRun,
+    OutdatedVerdicts,
     PairRequest,
     PairResponse,
+    ProfileDraft,
+    ProfileResponse,
+    ProfileUpdate,
     RulesResponse,
     RulesSaved,
     RulesVersion,
@@ -159,6 +166,38 @@ class ShutdownBusyError(AppError):
     status_code = 409
     code = "RUN_IN_PROGRESS"
     message = "Hay una búsqueda en marcha: espera a que termine para apagar la API."
+
+
+class ProfileInvalidError(AppError):
+    status_code = 422
+    code = "PROFILE_INVALID"
+    message = "El perfil no es válido."
+
+
+class ProfileChangedError(AppError):
+    status_code = 409
+    code = "PROFILE_CHANGED"
+    message = (
+        "Tu perfil ha cambiado fuera de la web desde que lo abriste (¿lo editaste a mano?). "
+        "Elige qué versión quieres conservar."
+    )
+
+
+class ProfilePathNotAllowedError(AppError):
+    status_code = 409
+    code = "PROFILE_PATH_NOT_ALLOWED"
+    message = (
+        "Desde la web solo se puede editar un perfil .md de la carpeta de datos. "
+        'Revisa "judge.profile_file" en tus Reglas de Oro.'
+    )
+
+
+class PdfSupportMissingError(AppError):
+    status_code = 503
+    code = "PDF_SUPPORT_MISSING"
+    message = (
+        "Falta pypdf para leer el CV: en hunter/, ejecuta `pip install -e .` y vuelve a abrir el Buscador."
+    )
 
 
 class RulesInvalidError(AppError):
@@ -307,6 +346,93 @@ def simulate_rules(payload: dict, repo: RepoDep) -> SimulateResponse:
     return simulate(repo, active_rules(repo), request.rules, window_days=request.window_days)
 
 
+# --- Tu perfil (SPEC §19) ----------------------------------------------------------------------
+
+
+def profile_file(rules: GoldenRules, settings: Settings) -> Path:
+    try:
+        return profile.resolve(rules, settings)
+    except profile.ProfilePathError as exc:
+        raise ProfilePathNotAllowedError() from exc
+
+
+def profile_response(repo: Repository, rules: GoldenRules, settings: Settings) -> ProfileResponse:
+    path = profile_file(rules, settings)
+    current = profile.read(path)
+    return ProfileResponse(
+        text=current.text,
+        sha256=current.sha256,
+        chars=profile.size(current.text),
+        max_chars=profile.MAX_CHARS,
+        terms=profile.terms(current.text),
+        is_example=profile.is_example(current.text),
+        exists=current.exists,
+        updated_at=current.updated_at,
+        previous_text=profile.read_previous(path),
+        outdated=OutdatedVerdicts(**asdict(profile.outdated(repo, rules, settings, current.text))),
+    )
+
+
+@api.get("/profile", response_model=ProfileResponse)
+def get_profile(repo: RepoDep, settings: SettingsDep) -> ProfileResponse:
+    return profile_response(repo, active_rules(repo), settings)
+
+
+@api.put("/profile", response_model=ProfileResponse)
+def put_profile(body: ProfileUpdate, repo: RepoDep, settings: SettingsDep) -> ProfileResponse:
+    """Guarda el perfil. Las ofertas nuevas se puntúan ya con él; las que siguen en juego recalculan su
+    pre-score (0 tokens) y las que ya se juzgaron con este mismo perfil recuperan esa nota de la caché."""
+    rules = active_rules(repo)
+    path = profile_file(rules, settings)
+    try:
+        saved = profile.save(path, body.text, body.base_sha256)
+    except profile.ProfileTextError as exc:
+        raise ProfileInvalidError(str(exc)) from exc
+    except profile.ProfileConflictError as exc:
+        raise ProfileChangedError() from exc
+    pipeline = services.build_pipeline(repo, rules, settings)  # ya con los términos del perfil nuevo
+    rescored = pipeline.rescore()
+    restored = pipeline.restore_cached(services.current_verdict_key(rules, settings, saved.text))
+    # Nunca el texto: solo cuánto mide y qué ha cambiado.
+    logger.info(
+        "profile_saved chars=%d rescored=%d restored=%d", profile.size(saved.text), rescored, restored
+    )
+    return profile_response(repo, rules, settings)
+
+
+async def read_pdf_body(request: Request, limit: int) -> bytes:
+    """El PDF llega como cuerpo `application/pdf` (sin multipart) y se lee en memoria hasta `limit`."""
+    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type not in ("application/pdf", "application/x-pdf", "application/octet-stream"):
+        raise UnsupportedMediaTypeError()
+    too_large = FileTooLargeError(f"El PDF supera los {limit // (1024 * 1024)} MB.")
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise too_large
+    data = bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data) > limit:
+            raise too_large
+    if not data:
+        raise InvalidPdfError("El archivo está vacío.")
+    return bytes(data)
+
+
+@api.post("/profile/draft", response_model=ProfileDraft)
+async def draft_profile(request: Request) -> ProfileDraft:
+    """Borrador del perfil a partir del CV en PDF, sin IA (SPEC §19.4). No guarda nada."""
+    try:
+        from hunter import cv_draft  # necesita pypdf: si falta, el resto de la API sigue funcionando
+    except ModuleNotFoundError as exc:
+        raise PdfSupportMissingError() from exc
+    data = await read_pdf_body(request, cv_draft.MAX_PDF_BYTES)
+    draft = cv_draft.build(await cv_draft.extract_text(data))
+    return ProfileDraft(
+        text=draft.text, chars=profile.size(draft.text), sections=draft.sections, warnings=draft.warnings
+    )
+
+
 @api.post("/runs", response_model=RunAccepted, status_code=202)
 async def start_run(body: RunRequest, request: Request, repo: RepoDep, settings: SettingsDep) -> RunAccepted:
     state = request.app.state
@@ -314,7 +440,7 @@ async def start_run(body: RunRequest, request: Request, repo: RepoDep, settings:
     task: asyncio.Task | None = state.run_task
     if (task is not None and not task.done()) or repo.live_run(STALE_RUN_AFTER):
         raise RunBusyError()
-    if body.mode == "judge_only" and settings.server_api_key is None:
+    if body.mode in ("judge_only", "rejudge") and settings.server_api_key is None:
         raise GroqKeyMissingError()
     if body.retry_failed:
         repo.reset_failed()

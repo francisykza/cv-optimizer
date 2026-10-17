@@ -3,7 +3,8 @@
 Comandos:
   init                  crea la carpeta de datos, el token local, el perfil y activa las reglas de ejemplo
   open                  lo que hace el acceso directo: arranca la API si hace falta y abre el Buscador
-  run                   ingesta + guillotina + juez IA (--mode ingest_only: sin tokens)
+  run                   ingesta + guillotina + juez IA (--mode ingest_only: sin tokens;
+                        --mode rejudge: vuelve a juzgar las notas de un perfil anterior)
   show ID / rejudge ID  veredicto de una oferta / volver a juzgarla sin caché
   serve                 API local en 127.0.0.1:8001 para la vista Buscador (--idle N: se apaga sola)
   rules show|export     muestra o exporta las reglas activas
@@ -121,7 +122,7 @@ def cmd_init(args: argparse.Namespace, settings: Settings) -> None:
 def cmd_run(args: argparse.Namespace, settings: Settings) -> None:
     repo = _repo(settings)
     rules = _require_rules(repo)
-    if args.mode == "judge_only" and settings.server_api_key is None:
+    if args.mode in ("judge_only", "rejudge") and settings.server_api_key is None:
         sys.exit("Falta GROQ_API_KEY en hunter/.env para ejecutar el juez.")
     if args.retry_failed:
         print(f"{repo.reset_failed()} ofertas fallidas vuelven a la cola del juez.")
@@ -159,7 +160,7 @@ def _print_run(run: Run, budget: BudgetGuard) -> None:
         if s.retry_at:
             line += f" · reintento {s.retry_at.astimezone():%d/%m %H:%M}"
         print(line)
-    if run.mode != "judge_only":
+    if run.mode in ("full", "ingest_only"):
         print(
             f"  Leídas {c.fetched} · nuevas {c.new} · duplicadas {c.duplicates} · descartadas {c.discarded}"
         )
@@ -408,9 +409,10 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="busca ofertas, aplica la guillotina y las juzga con IA")
     run.add_argument(
         "--mode",
-        choices=["full", "ingest_only", "judge_only"],
+        choices=["full", "ingest_only", "judge_only", "rejudge"],
         default="full",
-        help="full: todo · ingest_only: sin juez (0 tokens) · judge_only: solo la cola del juez",
+        help="full: todo · ingest_only: sin juez (0 tokens) · judge_only: solo la cola del juez · "
+        "rejudge: las notas de esta semana que son de un perfil anterior",
     )
     run.add_argument("--trigger", choices=["cli", "scheduler"], default="cli")
     run.add_argument(

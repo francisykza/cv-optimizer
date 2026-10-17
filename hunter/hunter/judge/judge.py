@@ -64,20 +64,27 @@ def escape_data(text: str) -> str:
     return _DELIMITER.sub(lambda m: f"[{m.group(1)}{m.group(2)}]", text)
 
 
-def truncate_paragraphs(text: str, limit: int) -> str:
+def truncate_paragraphs(text: str, limit: int, note: str = "[…oferta recortada]") -> str:
     """Recorta por párrafo (o por línea) para no partir frases a la mitad."""
     if len(text) <= limit:
         return text
     cut = text.rfind("\n", 0, limit)
     if cut < limit * 0.6:
         cut = text.rfind(" ", 0, limit)
-    return text[: cut if cut > 0 else limit].rstrip() + "\n[…oferta recortada]"
+    return text[: cut if cut > 0 else limit].rstrip() + "\n" + note
 
 
 def model_family(model: str) -> str:
     """'openai/gpt-oss-120b' y 'openai/gpt-oss-20b' comparten caché: 'gpt-oss'."""
     name = model.split("/")[-1].lower()
     return re.sub(r"[-_]?\d+(?:\.\d+)?[bm]$", "", name) or name
+
+
+def verdict_key(desc_sha256: str, context_hash: str, family: str) -> str:
+    """Clave del veredicto en caché. Una oferta juzgada cuya `verdict_key` no coincide con la que
+    tendría ahora se juzgó con otro perfil, otras prioridades, otro prompt u otra familia de modelo."""
+    raw = f"{desc_sha256}|{context_hash}|{PROMPT_VERSION}|{family}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -171,8 +178,7 @@ class Judge:
     # --- API pública ---------------------------------------------------------------------
 
     def cache_key(self, job: StoredJob) -> str:
-        raw = f"{job.desc_sha256}|{self.context.hash}|{PROMPT_VERSION}|{self._family}"
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return verdict_key(job.desc_sha256, self.context.hash, self._family)
 
     def cached(self, job: StoredJob) -> JudgeOutcome | None:
         key = self.cache_key(job)
@@ -243,7 +249,9 @@ class Judge:
             + truncate_paragraphs(job.facts.description, self.config.max_input_chars)
         )
         values = {
-            "PROFILE": escape_data(truncate_paragraphs(self.context.profile, PROFILE_MAX_CHARS)),
+            "PROFILE": escape_data(
+                truncate_paragraphs(self.context.profile, PROFILE_MAX_CHARS, "[…perfil recortado]")
+            ),
             "PRIORITIES": escape_data("; ".join(self.context.priorities) or "no indicadas"),
             "SOFT_DISLIKES": escape_data("; ".join(self.context.soft_dislikes) or "nada en concreto"),
             "SIGNALS": escape_data(signals(job)),

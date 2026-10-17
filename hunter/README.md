@@ -6,8 +6,9 @@ las que quedan: encaje 0-100, señales a favor y en contra con su cita literal, 
 inflado.
 Funciona en tu equipo, con SQLite, sin servicios de pago. Diseño completo en [SPEC.md](SPEC.md).
 
-**Estado:** completo (SPEC 0.4.0): motor determinista, juez IA, API local, vista "Buscador" con el botón
-"Enviar al Optimizador", acceso directo de un doble clic y seguimiento de candidaturas.
+**Estado:** completo (SPEC 0.5.0): motor determinista, juez IA, API local, vista "Buscador" con el botón
+"Enviar al Optimizador", acceso directo de un doble clic, seguimiento de candidaturas y tu perfil editable
+desde la web.
 
 ## Instalación
 
@@ -22,8 +23,11 @@ python -m venv .venv
 `init` crea la carpeta de datos (base de datos, perfil, logs y candidaturas), un `.env` con el token local
 y activa las reglas de [`rules.example.json`](rules.example.json). En Windows la carpeta de datos es
 `%LOCALAPPDATA%\CV-Optimizer\hunter`: fuera del repositorio y de OneDrive (en otros sistemas,
-`hunter/data/`; se cambia con `HUNTER_DATA_DIR`). Edita su `profile.md` con tus habilidades reales: el
-pre-score las usa para ordenar las ofertas y el juez lo lee entero.
+`hunter/data/`; se cambia con `HUNTER_DATA_DIR`). Escribe tu perfil desde la web (ver [Tu perfil](#tu-perfil)):
+el pre-score usa tus habilidades para ordenar las ofertas y el juez lo lee entero.
+
+Si actualizas desde una versión anterior, repite el `pip install` de arriba: el borrador del perfil desde el
+CV necesita `pypdf`.
 
 Para el juez, pon tu clave de Groq en `hunter/.env` (`GROQ_API_KEY=...`, plantilla en
 [`.env.example`](.env.example)). Sin clave, todo funciona hasta la guillotina.
@@ -37,6 +41,7 @@ aparecen como error y el resto (Remotive, Arbeitnow, RSS) sigue funcionando.
 python -m hunter run                         # busca, filtra y juzga
 python -m hunter run --mode ingest_only      # sin juez (0 tokens)
 python -m hunter run --mode judge_only       # solo la cola pendiente del juez
+python -m hunter run --mode rejudge          # vuelve a juzgar las notas de un perfil anterior
 python -m hunter jobs --stage judged         # ranking (desde judge.min_score_to_show)
 python -m hunter show 1a2b3c4d               # veredicto completo de una oferta
 python -m hunter rejudge 1a2b3c4d            # volver a juzgarla sin caché
@@ -90,6 +95,24 @@ que la pegues tú.
 Sin el acceso directo: `.venv/Scripts/python -m hunter serve` (escucha solo en `http://127.0.0.1:8001`,
 Ctrl+C para pararla) y entra en la web con `?hunter=1`; ahí puedes pegar el `HUNTER_TOKEN` de tu `.env`.
 En local, `frontend/.env.local` con `VITE_HUNTER_ENABLED=true` y `npm run dev`.
+
+## Tu perfil
+
+En **Reglas de Oro → Tu perfil** ves y editas lo que lee la IA antes de puntuar cada oferta (el
+`profile.md` de la carpeta de datos; también se puede editar a mano).
+
+- **Hasta 4000 caracteres**, lo que lee el juez. Cada apartado empieza por `## `; el pre-score saca tus
+  tecnologías de los apartados de habilidades y te enseña cuáles buscará.
+- **Guardar** escribe el archivo sin riesgo de dejarlo a medias y deja la versión anterior en
+  `profile.anterior.md` ("Recuperar la versión anterior"). Si lo cambiaste a mano mientras la web estaba
+  abierta, te pregunta con cuál quedarte.
+- **Empezar desde tu CV**: elige tu CV en PDF (o usa el que recuerda el navegador) y la API local copia sus
+  apartados en un borrador, sin tu nombre ni tus datos de contacto. No usa IA ni gasta tokens, y no se
+  guarda hasta que lo revisas.
+- **Notas de un perfil anterior**: las ofertas ya puntuadas no se vuelven a juzgar solas. Al guardar, la web
+  te dice cuántas de la última semana tienen nota de tu perfil anterior y cuánto costaría ponerlas al día
+  (tokens y minutos). "Volver a juzgarlas" lo hace sin quitarles la nota hasta que llega la nueva; si
+  vuelves a un perfil anterior, sus notas vuelven gratis de la caché.
 
 ## Candidaturas
 

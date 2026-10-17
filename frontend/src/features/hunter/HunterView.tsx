@@ -12,9 +12,10 @@ import { ConnectionGate, type GateState } from './ConnectionGate'
 import { HunterError, hunterApi, tokenStore } from './hunterClient'
 import { JobCard } from './JobCard'
 import { takePairCode } from './pairing'
+import { ProfileEditor } from './ProfileEditor'
 import { RulesEditor } from './RulesEditor'
 import { RunPanel } from './RunPanel'
-import type { AppStatus, JobItem, JobsView, Run } from './types'
+import type { AppStatus, JobItem, JobsView, Run, RunMode } from './types'
 
 type JobsTab = Exclude<JobsView, 'all'>
 type Tab = JobsTab | 'applications' | 'rules'
@@ -58,6 +59,12 @@ export default function HunterView() {
   const [stopping, setStopping] = useState(false)
   // Ofertas que la IA ha puntuado desde que se cargó la lista (la búsqueda sigue en marcha).
   const [fresh, setFresh] = useState(0)
+  const [freshKind, setFreshKind] = useState<'new' | 'rejudge'>('new')
+  // Una vuelta del juez lanzada desde Tu perfil, para que el panel de búsqueda la siga.
+  const [followRun, setFollowRun] = useState<{ id: string; mode: RunMode } | null>(null)
+  // Sube al terminar una búsqueda o una vuelta del juez: las notas han cambiado.
+  const [notesVersion, setNotesVersion] = useState(0)
+  const [profileNotice, setProfileNotice] = useState<{ example: boolean; outdated: number } | null>(null)
   const searchId = useId()
   const request = useRef(0)
   const tokenRef = useRef(token)
@@ -169,8 +176,29 @@ export default function HunterView() {
       shownJudged.current = run.counts.judged
       return
     }
-    if (run.status === 'running') setFresh(Math.max(0, run.counts.judged - shownJudged.current))
+    if (run.status === 'running') {
+      setFresh(Math.max(0, run.counts.judged - shownJudged.current))
+      setFreshKind(run.mode === 'rejudge' ? 'rejudge' : 'new')
+    }
   }, [])
+
+  // En "Para ti", avisa si las notas son del perfil de ejemplo o de un perfil anterior.
+  const onRanked = tab === 'ranked'
+  useEffect(() => {
+    if (gate !== 'ready' || !onRanked) return
+    let cancelled = false
+    hunterApi
+      .profile(token)
+      .then((p) => {
+        if (!cancelled) setProfileNotice({ example: p.is_example || !p.exists, outdated: p.outdated.count })
+      })
+      .catch(() => {
+        if (!cancelled) setProfileNotice(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [gate, token, onRanked, notesVersion])
 
   // Si no había nada que mirar, las nuevas se muestran directamente.
   useEffect(() => {
@@ -340,9 +368,13 @@ export default function HunterView() {
         <>
           <RunPanel
             token={token}
-            onFinished={() => void load(false)}
+            onFinished={() => {
+              void load(false)
+              setNotesVersion((v) => v + 1)
+            }}
             onAuthError={authFailed}
             onProgress={onProgress}
+            followRun={followRun}
           />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -387,18 +419,49 @@ export default function HunterView() {
           </div>
 
           {tab === 'rules' ? (
-            <RulesEditor token={token} onSaved={() => setTab('ranked')} />
+            <div className="space-y-10">
+              <ProfileEditor
+                token={token}
+                refreshKey={notesVersion}
+                onRejudgeStarted={(id) => setFollowRun({ id, mode: 'rejudge' })}
+              />
+              <RulesEditor token={token} onSaved={() => setTab('ranked')} />
+            </div>
           ) : tab === 'applications' ? (
             <ApplicationsPanel token={token} onConnectionError={connectionError} />
           ) : (
             <div className="space-y-4" aria-busy={loading}>
+              {tab === 'ranked' && profileNotice && (profileNotice.example || profileNotice.outdated > 0) && (
+                <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                  <span className="marker marker-amber">
+                    {profileNotice.example
+                      ? 'Estas notas son para el perfil de ejemplo, no para ti.'
+                      : profileNotice.outdated === 1
+                        ? '1 nota es de un perfil anterior.'
+                        : `${profileNotice.outdated} notas son de un perfil anterior.`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTab('rules')}
+                    className="focus-ring rounded font-medium text-cobalt-700 underline-offset-2 hover:underline dark:text-cobalt-300"
+                  >
+                    {profileNotice.example ? 'Escribir mi perfil' : 'Revisarlas'}
+                  </button>
+                </p>
+              )}
               {fresh > 0 && tab === 'ranked' && jobs.length > 0 && (
                 <button
                   type="button"
                   onClick={() => void load(false)}
                   className="focus-ring mx-auto flex items-center gap-2 rounded-full bg-ink px-4 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-ink/90 dark:bg-white dark:text-slate-900"
                 >
-                  {fresh === 1 ? 'La IA ha puntuado 1 oferta más' : `La IA ha puntuado ${fresh} ofertas más`}
+                  {freshKind === 'rejudge'
+                    ? fresh === 1
+                      ? 'La IA ha puesto al día 1 nota'
+                      : `La IA ha puesto al día ${fresh} notas`
+                    : fresh === 1
+                      ? 'La IA ha puntuado 1 oferta más'
+                      : `La IA ha puntuado ${fresh} ofertas más`}
                   <span aria-hidden>·</span> Actualizar la lista
                 </button>
               )}

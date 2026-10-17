@@ -11,6 +11,8 @@ dependencies = [
     # API local (Fase 3); mismas versiones que el backend.
     "fastapi==0.143.0",
     "uvicorn[standard]==0.54.0",
+    # Borrador del perfil desde el CV (SPEC §19.4) con el extractor del backend; misma versión.
+    "pypdf==6.20.1",
 ]
 
 [project.optional-dependencies]

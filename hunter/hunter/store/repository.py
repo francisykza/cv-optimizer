@@ -229,6 +229,13 @@ class Repository:
             ),
         )
 
+    def set_prescore(self, job_id: str, prescore: int, rank: float | None = None) -> None:
+        """Nuevo pre-score; si la oferta está juzgada, también su posición en el ranking."""
+        self.conn.execute(
+            "UPDATE jobs SET prescore = ?, rank_score = COALESCE(?, rank_score) WHERE id = ?",
+            (prescore, rank, job_id),
+        )
+
     def set_stage(self, job_id: str, stage: Stage, prescore: int | None = None) -> None:
         if prescore is None:
             self.conn.execute("UPDATE jobs SET stage = ? WHERE id = ?", (stage, job_id))
@@ -391,6 +398,15 @@ class Repository:
             "UPDATE jobs SET stage = 'pending_judge', judge_error = NULL WHERE stage = 'judge_failed'"
         )
         return cur.rowcount
+
+    def avg_verdict_tokens(self, last: int = 50) -> int | None:
+        """Tokens medios por veredicto en los últimos `last` juicios reales (sin los de caché)."""
+        row = self.conn.execute(
+            "SELECT AVG(tokens_in + tokens_out) AS avg FROM (SELECT tokens_in, tokens_out FROM verdicts "
+            "WHERE status = 'ok' AND tokens_in > 0 ORDER BY created_at DESC LIMIT ?)",
+            (last,),
+        ).fetchone()
+        return round(row["avg"]) if row and row["avg"] is not None else None
 
     def tokens_used(self, day: date) -> int:
         row = self.conn.execute(

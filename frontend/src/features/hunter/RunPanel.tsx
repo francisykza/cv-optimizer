@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { cn } from '../../lib/format'
 import { HunterError, hunterApi } from './hunterClient'
-import type { Run, SourceRun } from './types'
+import type { Run, RunMode, SourceRun } from './types'
 
 const SITE: Record<string, string> = {
   linkedin: 'LinkedIn',
@@ -31,6 +31,10 @@ function when(iso: string | null): string {
 
 function summary(run: Run): string {
   const c = run.counts
+  if (run.mode === 'rejudge') {
+    const done = c.judged === 1 ? '1 nota puesta al día' : `${c.judged} notas puestas al día`
+    return c.judge_failed ? `${done} con tu perfil; ${c.judge_failed} conservan la anterior` : `${done} con tu perfil`
+  }
   const parts: string[] = []
   if (run.mode !== 'judge_only') parts.push(`${c.new} ofertas nuevas de ${c.fetched} leídas`)
   if (run.mode !== 'ingest_only') parts.push(`${c.judged} juzgadas por la IA`)
@@ -44,6 +48,8 @@ interface RunPanelProps {
   onAuthError: (error: HunterError) => void
   /** Cada vez que llega el estado de una búsqueda en marcha (para avisar de ofertas nuevas). */
   onProgress?: (run: Run) => void
+  /** Una vuelta del juez que se lanzó desde otro sitio (Tu perfil): el panel la sigue igual. */
+  followRun?: { id: string; mode: RunMode } | null
 }
 
 /** "Puntuando 5 de 14": solo cuando el juez ya está trabajando. */
@@ -54,11 +60,13 @@ function judgeProgress(run: Run | null): { done: number; total: number } | null 
 }
 
 /** "Buscar ofertas ahora" y el resultado de la última búsqueda, fuente a fuente. */
-export function RunPanel({ token, onFinished, onAuthError, onProgress }: RunPanelProps) {
+export function RunPanel({ token, onFinished, onAuthError, onProgress, followRun }: RunPanelProps) {
   const [run, setRun] = useState<Run | null>(null)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
+  // Modo de la que se acaba de lanzar, hasta que llega su primer estado.
+  const [startedMode, setStartedMode] = useState<RunMode>('full')
   const poll = useRef<number | null>(null)
 
   const stopPolling = () => {
@@ -106,11 +114,24 @@ export function RunPanel({ token, onFinished, onAuthError, onProgress }: RunPane
     }
   }, [token, follow])
 
+  // `follow` cambia con cada render del padre: solo se sigue una vuelta nueva cuando llega otra.
+  const followRef = useRef(follow)
+  useEffect(() => {
+    followRef.current = follow
+  })
+  useEffect(() => {
+    if (!followRun) return
+    stopPolling()
+    setStartedMode(followRun.mode)
+    followRef.current(followRun.id)
+  }, [followRun])
+
   const start = async () => {
     setStarting(true)
     setError(null)
     try {
       const { run_id } = await hunterApi.startRun(token)
+      setStartedMode('full')
       follow(run_id)
     } catch (err) {
       if (err instanceof HunterError && err.status === 401) onAuthError(err)
@@ -121,7 +142,10 @@ export function RunPanel({ token, onFinished, onAuthError, onProgress }: RunPane
   }
 
   const running = activeId !== null || run?.status === 'running'
-  const progress = running ? judgeProgress(run) : null
+  // Mientras no llega el primer estado de la que se sigue, `run` es la anterior: no se mezclan sus cifras.
+  const current = activeId === null || run?.id === activeId ? run : null
+  const progress = running ? judgeProgress(current) : null
+  const rejudging = (current?.mode ?? startedMode) === 'rejudge'
 
   return (
     <section
@@ -133,7 +157,9 @@ export function RunPanel({ token, onFinished, onAuthError, onProgress }: RunPane
           <div className="space-y-2">
             <p className="flex items-center gap-2 font-medium">
               <LoaderCircle className="size-4 animate-spin text-cobalt-600" aria-hidden />
-              La IA está puntuando las ofertas nuevas: {progress.done} de {progress.total}.
+              {rejudging
+                ? `La IA está volviendo a puntuar con tu perfil: ${progress.done} de ${progress.total}.`
+                : `La IA está puntuando las ofertas nuevas: ${progress.done} de ${progress.total}.`}
             </p>
             <div
               className="h-1.5 max-w-sm overflow-hidden rounded-full bg-cobalt-100 dark:bg-cobalt-500/20"
@@ -149,25 +175,31 @@ export function RunPanel({ token, onFinished, onAuthError, onProgress }: RunPane
               />
             </div>
             <p className="text-slate-600 dark:text-slate-300">
-              Puedes ir mirando las que ya tienes: las nuevas se añaden según quedan puntuadas.
+              {rejudging
+                ? 'Cada oferta conserva su nota hasta que llega la nueva.'
+                : 'Puedes ir mirando las que ya tienes: las nuevas se añaden según quedan puntuadas.'}
             </p>
           </div>
         ) : running ? (
           <p className="flex items-center gap-2 font-medium">
             <LoaderCircle className="size-4 animate-spin text-cobalt-600" aria-hidden />
-            Buscando en los portales y pasando las ofertas por tus reglas. Tarda unos minutos.
+            {rejudging
+              ? 'Preparando las ofertas que hay que volver a puntuar con tu perfil.'
+              : 'Buscando en los portales y pasando las ofertas por tus reglas. Tarda unos minutos.'}
           </p>
         ) : run ? (
           <p>
-            <span className="font-medium">Última búsqueda, {when(run.finished_at ?? run.started_at)}:</span>{' '}
+            <span className="font-medium">
+              {rejudging ? 'Notas revisadas' : 'Última búsqueda'}, {when(run.finished_at ?? run.started_at)}:
+            </span>{' '}
             {summary(run)}.
           </p>
         ) : (
           <p className="text-slate-600 dark:text-slate-300">Todavía no has buscado ofertas desde aquí.</p>
         )}
-        {run && run.sources.length > 0 && (
+        {current && current.sources.length > 0 && (
           <ul className="flex flex-wrap gap-x-4 gap-y-1">
-            {run.sources.map((s) => (
+            {current.sources.map((s) => (
               <li key={s.source}>
                 {SITE[s.source] ?? s.source}{' '}
                 <span className={cn('font-medium', SOURCE_STATE[s.status].tone)} title={s.error_message ?? undefined}>
@@ -195,7 +227,7 @@ export function RunPanel({ token, onFinished, onAuthError, onProgress }: RunPane
         ) : (
           <Search className="size-4" aria-hidden />
         )}
-        {running ? 'Buscando…' : 'Buscar ofertas ahora'}
+        {running ? (rejudging ? 'Puntuando…' : 'Buscando…') : 'Buscar ofertas ahora'}
       </button>
     </section>
   )
