@@ -84,7 +84,8 @@ def test_save_is_atomic_keeps_the_previous_version_and_cleans_the_text(tmp_path:
     assert path.read_bytes() == b"## Resumen\nJunior en IA\n"  # LF, sin espacios finales ni NUL
     assert saved.text == "## Resumen\nJunior en IA\n" and saved.sha256 != base
     assert profile.read_previous(path) == PROFILE_A
-    assert [p.name for p in tmp_path.iterdir()] == ["profile.anterior.md", "profile.md"]  # sin temporales
+    # Sin temporales: solo el perfil y su versión anterior.
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["profile.anterior.md", "profile.md"]
 
     again = profile.save(path, saved.text, saved.sha256)  # mismo texto: no toca nada
     assert again == saved and profile.read_previous(path) == PROFILE_A
